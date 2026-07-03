@@ -99,8 +99,9 @@ engage); keyboard is the always-available fallback; lock loss auto-pauses via
 Any positive value makes farming the last enemy's shots (especially a Pulsar,
 which never leaves the well) a dominant, unbounded high-score strategy. Zero
 matches the original closely enough and kills the exploit. Spike trims stay at
-1 point: rate-bounded (~10 pts/s), requires standing in harm's way, and the wave
-still can't end until the Spiker is dead — not a viable farm.
+1 point: rate-bounded (~7 pts/s at the current fireInterval), requires standing
+in harm's way, and the wave still can't end until the Spiker is dead — not a
+viable farm.
 
 ## D15. "Fuseball" name restored; lane-based movement kept (review round 1)
 
@@ -254,3 +255,32 @@ presentation only. (2) The §15 performance gate is per-frame main-thread work
 time alone; dropped-frame percentage is informational because any rAF-derived
 frame metric is display/VRR-dependent and would make acceptance depend on the
 tester's monitor.
+
+## D35. Enemies have fixed per-type colors; the level band colors the well/HUD (review round 4)
+
+Review showed all five enemy types could legally render identically. Fixed
+canonical colors (Flippers red, Tankers purple, Spikers/spikes green, Fuseballs
+multicolor, Pulsars cyan/white) match the original's readability — the player
+must identify types at depth to prioritize — while the 16-level band still
+recolors the well itself.
+
+## D36. A lane's electrification ends the instant its Pulsar dies (review round 4)
+
+The alternative (lane stays lethal until pulse end) punishes the player for a
+successful shot and is invisible-state gameplay. Kill-then-cross is a legitimate
+skill move, consistent with the shot-before-lethality tick order.
+
+## D37. Menus are keyboard-driven; pointer lock exists only in the play states (review round 4)
+
+Mouse-driven menus would need a second (unlocked) mouse-input mode, contradicting
+the pointer-lock-only model (D13). The app exits any held lock when the sim
+leaves PLAYING/GET_READY/WARP; UI navigation converts the movement delta into
+rate-limited discrete selector steps inside the sim, keeping menu behavior
+deterministic and replayable.
+
+## D38. Per-tick rim movement is clamped below half a lane (review round 4)
+
+Unbounded mouse deltas could cross ≥ 2 lanes in one tick, tunneling through
+symmetric rim contact, electrified lanes, and warp spikes (all sampled per tick
+via the player-lane rule). A 0.45 lanes/tick clamp (~27 lanes/s — still double
+keyboard speed) makes lane skipping impossible while keeping mouse control fast.
