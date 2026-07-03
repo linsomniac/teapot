@@ -388,11 +388,14 @@ export function paletteIndexForLevel(level: number): number;   // floor((level-1
 - [ ] **Test (the §4 structural-validation area — no projection needed):** for all
   16 — exactly 16 lanes (16/17 vertices per closed/open); no rim self-intersection
   (segment-pair cross test); indices 0–7 `closed`, 8–15 open, matching
-  `geometryIndexForLevel` (Task 1.4); **winding convention (§4)** — closed wells have
-  a consistent signed rim area (assert the shoelace signed area is negative =
-  clockwise in screen space where +y is down, for every closed geometry), and open
-  wells have rim vertices whose x-coordinate is non-decreasing (left-to-right) so
-  increasing lane index reads left-to-right. (The projected-lane-width check is added
+  `geometryIndexForLevel` (Task 1.4); **winding convention (§4)** — closed wells are
+  authored clockwise on screen so increasing lane index reads clockwise. In a
+  **+y-down** canvas space the standard shoelace signed area
+  `S = ½·Σ(xᵢ·yᵢ₊₁ − xᵢ₊₁·yᵢ)` is **positive** for a clockwise polygon (worked
+  example: TL(-1,-1)→TR(1,-1)→BR(1,1)→BL(-1,1) gives S = +4), so assert `S > 0` for
+  every closed geometry — matching §4's visual intent, not a mirrored order. Open
+  wells have rim vertices with non-decreasing x (left-to-right), so increasing lane
+  index reads left-to-right. (The projected-lane-width check is added
   in Task 1.6, once projection exists.)
 - [ ] Implement geometries until the test passes (iterate vertex coords). Commit.
 
@@ -730,8 +733,10 @@ export function updateFlipper(e: Enemy, s: SimState, lp: LevelParams, cfg: GameC
 **Files:** `src/sim/enemies/tanker.ts`, tests.
 (The "fires" behavior is the shared scheduler built in Task 4.6 — here just mark the
 Tanker an eligible firing kind and assert motion; end-to-end firing is tested in 4.6.)
-- [ ] **Test (§13 Tanker area):** climbs slowly, never changes lanes, is a firing
-  kind;
+- [ ] **Test (§13 Tanker area):** climbs at `Climb × climbMul.tanker` (0.6) —
+  a wiring test that injects a modified `climbMul.tanker` and asserts the per-tick
+  advance changes (so a swapped/defaulted multiplier fails); never changes lanes, is
+  a firing kind;
   shot/rim split → two Flippers created at the Tanker's depth, each starting a flip
   (progress 0) to opposite adjacent lanes, FlipInt from completion; end-lane split →
   both inward, staggered by `flipAnimTime/2`; splits ignore MaxOnWell; rim self-split
@@ -748,8 +753,10 @@ export function trimOrKill(spike: Spike, spikerAtTip: Enemy | null,
                            trim: number): 'kill' | 'trim';  // §6.3 priority
 export function updateSpiker(e: Enemy, s: SimState, lp: LevelParams, cfg: GameConfig): void;
 ```
-- [ ] **Test (§13 Spiker area):** climb raises spike top to `1−SpikeH` then reverses;
-  descends its lane at climb speed to depth 1, switches to a random lane that is
+- [ ] **Test (§13 Spiker area):** climbs/descends at `Climb × climbMul.spiker` (0.8)
+  — a wiring test that injects a modified `climbMul.spiker` and asserts the advance
+  changes; climb raises spike top to `1−SpikeH` then reverses; descends its lane at
+  climb speed to depth 1, switches to a random lane that is
   **not its current lane and not occupied by another Spiker**, resumes; growth-only
   top (a trim while the Spiker is resident below the top persists — never reverted);
   shot at the tip with Spiker at/above kills the Spiker, else trims once and is
@@ -765,8 +772,10 @@ export function updateSpiker(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 ### Task 4.4: Fuseball
 
 **Files:** `src/sim/enemies/fuseball.ts`, tests.
-- [ ] **Test (§13 Fuseball area):** speed multiplier redrawn from [0.3,1.5] every
-  0.5 s; **descent target** drawn from `[0.6,1.0]`; band boundaries as in Task 3.3;
+- [ ] **Test (§13 Fuseball area):** base climb is `Climb × climbMul.fuseball` (0.5)
+  before jitter — a wiring test that injects a modified `climbMul.fuseball` and
+  asserts the advance changes; speed multiplier redrawn from [0.3,1.5] every 0.5 s;
+  **descent target** drawn from `[0.6,1.0]`; band boundaries as in Task 3.3;
   climbs, never changes lanes; rim residency = crawl toward player at
   `fuseballRimSpeed` shortest arc (open ends reverse) for `fuseballRimTime`, then
   descend at base speed (no jitter) to a random depth in [0.6,1.0], resume; symmetric
@@ -783,7 +792,9 @@ export type PulsePhase = 'quiet' | 'telegraph' | 'pulse';
 export function pulsePhase(clock: number, pulseCycle: number, tuning: Tuning): PulsePhase; // §6.5
 export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameConfig): void;
 ```
-- [ ] **Test (§13 Pulsar area):** oscillates between depth 0.15 and 1, never rim,
+- [ ] **Test (§13 Pulsar area):** climbs/descends at `Climb × climbMul.pulsar` (0.9)
+  — a wiring test that injects a modified `climbMul.pulsar` and asserts the advance
+  changes; oscillates between depth 0.15 and 1, never rim,
   never despawns, flips (same targeting) incl. while descending; pulse timeline
   quiet/telegraph(0.5)/pulse(pulseDuration); clock restarts each PLAYING entry;
   participation = on-well at telegraph start; flips freeze telegraph→pulse-end,
