@@ -91,9 +91,11 @@ teapot/
     main.ts                  # bootstraps app/ (the only DOM entry)
     sim/                     # PURE — no browser APIs, engine-stable math
       types.ts               # Lane, Depth, EnemyKind, Enemy, Shot, Spike,
-                             #   InputSnapshot, SimEvent, GameConfig, SimState
+                             #   InputSnapshot, SimEvent + TICK_MS/TICK_SEC consts
+                             #   (GameConfig lives in config.ts; SimState in state.ts)
       rng.ts                 # mulberry32 (I5)
       config.ts              # GameConfig assembly types + validation
+      highscore.ts           # qualifies/insertScore (sim-owned, §10/I14)
       data/
         geometries.ts        # 16 authored wells (§4)
         difficulty.ts        # §8.2 anchor table
@@ -195,6 +197,10 @@ export type EnemyKind = 'flipper' | 'tanker' | 'spiker' | 'fuseball' | 'pulsar';
 export type Phase =
   | 'TITLE' | 'LEVEL_SELECT' | 'PLAYING' | 'GET_READY'
   | 'WARP' | 'GAME_OVER' | 'HIGH_SCORE_ENTRY';
+export const TICK_MS = 1000 / 60;      // fixed timestep (§12.3)
+export const TICK_SEC = 1 / 60;        // per-tick seconds; ALL sim updates advance
+                                       // by this constant, never a passed-in dt
+                                       // (Task 2.1's stepper re-exports TICK_MS)
 
 export interface InputSnapshot {   // §12.3 — the ONLY way the sim advances
   move: number;      // per-tick rim delta in lanes, pre-clamped by input layer
@@ -224,7 +230,9 @@ export type SimEvent =
   | { type: 'highScoreJingle' };
 ```
 - [ ] Write a test that constructs each type literal (compile-time coverage) and
-  asserts `EnemyKind` array length etc. Commit.
+  asserts a small runtime invariant per exported const/array (e.g. `TICK_MS ≈
+  16.67`, `TICK_SEC × 60 === 1`, and a frozen list of the 5 `EnemyKind` values has
+  length 5). Commit.
 
 ### Task 1.2: Seedable RNG (mulberry32)
 
@@ -290,7 +298,8 @@ export function validateConfig(c: GameConfig): void;  // throws on violation
 - [ ] **Test:** `validateConfig` accepts a well-formed config; rejects a config
   whose difficulty anchors aren't sorted by level, whose geometry count ≠ 16, or
   whose tuning violates a stated §8.3 constraint at any anchor
-  (`fireInterval > flipAnimTime/2 + extents/shotSpeed + tick`,
+  (`fireInterval > flipAnimTime/2 + (enemyHalfExtent+shotHalfExtent)/shotSpeed +
+  TICK_SEC` — the `TICK_SEC` const from Task 1.1;
   `flipInt ≥ 2·flipAnimTime`, `perTickClamp < 0.5`,
   `pulse ≥ telegraph + pulseDuration`). This is part of the §13
   "tuning-constraint guards" area (the *interpolated-table* guard is in Task 2.3).
@@ -385,7 +394,7 @@ export function laneWidthAtRim(g: Geometry, vp: Viewport): number;  // min px, f
 
 **Interfaces (Produces):**
 ```ts
-export const TICK_MS = 1000 / 60;
+export { TICK_MS } from './types';   // defined in Task 1.1; re-export for callers
 export const MAX_ACCUM_MS = 250;
 export function advance(accumMs: number, elapsedMs: number):
   { ticks: number; accumMs: number; alpha: number };   // §12.3
@@ -457,11 +466,13 @@ export interface InitialSave {
 export interface SimState {
   phase: Phase; level: number; score: number; lives: number;
   livesGranted: number;                 // for bonus-life accounting (§7)
-  rimPos: number; closed: boolean; geometryIndex: number;
+  rimPos: number; prevRimPos: number;   // prev for claw interpolation (§11.1/Task 8.2)
+  warpDepth: number; prevWarpDepth: number;  // Blaster descent + interpolation
+  closed: boolean; geometryIndex: number;
   enemies: Enemy[]; playerShots: Shot[]; enemyShots: Shot[]; spikes: Spike[];
   budget: Record<EnemyKind, number>;    // remaining spawn budget (§6)
   superzapper: 0 | 1 | 2;               // EMPTY/PARTIAL/FULL (§5)
-  spawnTimer: number; pulseClock: number; getReadyTimer: number; warpDepth: number;
+  spawnTimer: number; pulseClock: number; getReadyTimer: number;
   beatTimer: number;                    // game-over beat countdown (§8.3/§10)
   fireCooldown: number; maxLevelReached: number;
   selector: number;                     // level-select / high-score cursor value
@@ -524,7 +535,12 @@ export function advanceShots(shots: Shot[], speed: number, dir: 1 | -1): void; /
   (keyboard delta), clamps on open wells; fire spawns a shot at `playerLane`,
   depth = 0 in PLAY / warpDepth in WARP; ≤ 8 shots in flight; `fireCooldown`
   enforces one shot per `fireInterval`; hold-fire auto-fires at the cap; a shot
-  reaching depth 1 despawns; shots cleared on every state transition (§6).
+  reaching depth 1 despawns; shots cleared on every state transition (§6). Also sets
+  `prevRimPos = rimPos` at the end of the tick (for interpolation). Note: the
+  **shot consumption / never-pierces** rule (§6) — a player shot is consumed by the
+  first thing it hits and cannot hit a second entity behind it — is asserted where
+  hits occur: enemy hit in Tasks 4.1–4.5, enemy-shot hit in Task 4.6, spike trim in
+  Task 4.3.
 - [ ] Implement in the tick pipeline (steps 1–2). Commit.
 
 ### Task 3.3: Scoring + bonus life
@@ -560,7 +576,7 @@ hash as you go.
 **Interfaces (Produces):**
 ```ts
 export function startFlip(e: Enemy, toLane: number): void;          // sets flip, freezes depth
-export function advanceFlip(e: Enemy, dtSec: number, flipAnimTime: number): boolean; // true on completion
+export function advanceFlip(e: Enemy, flipAnimTime: number): boolean; // advances by TICK_SEC; true on completion
 export function chooseMidWellFlip(e: Enemy, playerLaneIdx: number, closed: boolean,
                                   seekBias: number, rng: Rng): number; // §6/§6.1
 export function updateFlipper(e: Enemy, s: SimState, lp: LevelParams, cfg: GameConfig): void;
@@ -569,9 +585,12 @@ export function updateFlipper(e: Enemy, s: SimState, lp: LevelParams, cfg: GameC
   `flipSeekBias` else random adjacent (seed-controlled), ties clockwise, inward at
   open ends, no flip when already on player lane (redraws full FlipInt); depth frozen
   during flip; occupancy = source lane first half, dest lane second half (shot
-  collision only); rim arrival discards pending mid-well timer, first rim flip after
-  `rimFlipInterval`; rim chase = shortest arc re-evaluated each flip; a completed rim
-  flip onto the player lane is lethal, crossing a mid-flip enemy's lane is safe.
+  collision only); a flip timer expiring mid-animation (or during a Pulsar freeze)
+  fires when the block ends; rim arrival discards pending mid-well timer, first rim
+  flip after `rimFlipInterval`; rim chase = shortest arc re-evaluated each flip; a
+  completed rim flip onto the player lane is lethal, crossing a mid-flip enemy's lane
+  is safe, and **symmetric contact** — the player sliding onto a resting (non-flipping)
+  rim Flipper's lane also dies (§5(b)).
 - [ ] **Test (§13 tick-order — same-tick rim-contact save):** a rim Flipper completing
   a flip onto the player's lane this tick, with a player shot positioned to kill it
   this tick; assert the player **survives** (step-3 kill before step-5 contact).
@@ -580,7 +599,10 @@ export function updateFlipper(e: Enemy, s: SimState, lp: LevelParams, cfg: GameC
 ### Task 4.2: Tanker
 
 **Files:** `src/sim/enemies/tanker.ts`, tests.
-- [ ] **Test (§13 Tanker area):** climbs slowly, never changes lanes, fires;
+(The "fires" behavior is the shared scheduler built in Task 4.6 — here just mark the
+Tanker an eligible firing kind and assert motion; end-to-end firing is tested in 4.6.)
+- [ ] **Test (§13 Tanker area):** climbs slowly, never changes lanes, is a firing
+  kind;
   shot/rim split → two Flippers created at the Tanker's depth, each starting a flip
   (progress 0) to opposite adjacent lanes, FlipInt from completion; end-lane split →
   both inward, staggered by `flipAnimTime/2`; splits ignore MaxOnWell; rim self-split
@@ -632,7 +654,8 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   participation = on-well at telegraph start; flips freeze telegraph→pulse-end,
   deferred flip releases at pulse end; a lane is lethal for the whole pulse (entering
   mid-pulse kills); de-electrifies the instant the last participating Pulsar on it
-  dies; shots pass through pulses; fires shots subject to min-firing-depth.
+  dies; shots pass through pulses; is a firing kind (end-to-end firing tested in
+  Task 4.6, subject to min-firing-depth).
 - [ ] **Test (§13 tick-order — same-tick pulse save):** a Pulsar pulsing on the
   player's lane, with a player shot positioned to destroy it this tick; assert the
   player **survives** (step-3 kill de-electrifies before step-5 pulse lethality).
@@ -650,7 +673,10 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 - [ ] **Test (§13 tick-order — same-tick enemy-shot save):** an enemy shot about to
   cross depth 0 on the player's lane, with a player shot positioned to intercept it
   this tick; assert the player **survives** (step-3 shot-vs-shot resolves before
-  step-4 rim lethality). Commit.
+  step-4 rim lethality).
+- [ ] **Test (§6 never-pierces):** a player shot that destroys an enemy shot is
+  consumed and does not also destroy a second enemy (or enemy shot) behind it on the
+  same lane the same tick. Commit.
 
 ### Task 4.7: Spawner
 
@@ -769,7 +795,9 @@ Keep hot paths allocation-free (reuse buffers; I3).
 - [ ] Full-viewport canvas, letterboxed 4:3, DPR-2-capped backing store (§11.1).
 - [ ] `glow(ctx, strokePath, color)`: additive (`globalCompositeOperation='lighter'`)
   wide low-alpha pass + thin bright core; degradation flag drops the wide pass
-  (§11.1). Stroke-segment font module (D22) — no font files. Commit.
+  (§11.1). Stroke-segment font module (D22) — no font files — authoring the full
+  glyph set the UI uses: `A`–`Z`, `0`–`9`, space, and the on-screen punctuation
+  (`×` for the clear bonus, `.`, `:`, `-`, `!`). Commit.
 
 ### Task 8.2: Well + player-lane highlight + interpolation
 - [ ] Draw the well via `project` (§11.1); highlight the rounded `playerLane`; draw
@@ -846,11 +874,16 @@ Keep hot paths allocation-free (reuse buffers; I3).
   (24 threatening + 7 Spikers + 16 full spikes + active pulse + 8+8 shots + saturated
   particles). The census exceeds MaxOnWell, so the bench builds a `SimState`
   **directly** (a debug constructor that places entities/spikes/shots into the state
-  arrays, bypassing the spawner's MaxOnWell gate) rather than playing up to it; it
-  then ticks the real sim + renderer for 60 s (seeded, scripted inputs). Report mean
-  & p95 (nearest-rank, drop frame 1) **work time** + informational dropped-frame
-  %/rAF stats as console JSON + on screen. F3 frame-time overlay in normal play
-  (§12.6). Commit.
+  arrays, bypassing the spawner's MaxOnWell gate) rather than playing up to it. It
+  then ticks the real sim + renderer for 60 s (seeded, scripted inputs) in
+  **census-hold mode** (§12.6): a bench flag makes the player invulnerable and
+  suppresses enemy despawn/completion, and after each tick the debug constructor
+  tops the census back up to the pinned maximum — entities still move/flip/pulse/
+  animate, so sim-update and render stay worst-case for the full 60 s (a plain real
+  run would collapse to a near-empty well within ~1 s). Report mean & p95
+  (nearest-rank, drop frame 1) **work time** + informational dropped-frame %/rAF
+  stats as console JSON + on screen. F3 frame-time overlay in normal play (§12.6).
+  Commit.
 
 ---
 
@@ -885,8 +918,9 @@ The rules themselves were activated in Task 0.1 and have guarded sim code all al
 
 ### Task 12.5: Anti-camping + economy invariant tests
 **Files:** `src/__tests__/antiCamping.test.ts`, `economyInvariant.test.ts`.
-- [ ] **Anti-camping (§13/D44):** first 10 fixed seeds; player scripted to the camp
-  lane (mid-rim closed level 1; end-lane open level 9) then stationary+hold-fire; each
+- [ ] **Anti-camping (§13/D44):** the 10 fixed seeds `1,2,…,10` (integer seeds,
+  documented in the test — not hand-picked); player scripted to the camp lane
+  (mid-rim closed level 1; end-lane open level 9) then stationary+hold-fire; each
   run fails to clear AND dies within 120 s; median time-to-death < 60 s per topology.
   Tune `flipSeekBias`/`fireInterval` in `data/tuning.ts` until green.
 - [ ] **Economy (§7/D30):** compute max attainable tail-wave score (full budgets,
@@ -907,6 +941,34 @@ The rules themselves were activated in Task 0.1 and have guarded sim code all al
 - [ ] Final `/codex-review` of the whole tree; address medium+ or record rejected.
   Commit. **Definition of Done for the project:** all §15 criteria satisfied,
   `npm run check` green, bench within budget, smoke pass clean in all four browsers.
+
+#### Manual browser-integration checklist (maintained here per §13)
+Run per supported browser (Chrome, Firefox, Edge, Safari); record pass/fail +
+notes in `loop/acceptance-results.md`. These are behaviors unit tests cannot reach:
+- [ ] Pointer lock engages on canvas click during PLAYING/GET_READY/WARP; the
+  engaging click does not fire a shot.
+- [ ] Escape while locked auto-pauses (driven by `pointerlockchange`, not the
+  keydown); blur/tab-hide auto-pauses; lock loss for any reason auto-pauses.
+- [ ] Auto-pause fires only in PLAYING/GET_READY/WARP and is ignored on menu /
+  game-over screens.
+- [ ] Click-to-resume re-requests the lock only if it was held at pause; P resumes
+  on keyboard; the resume click does not fire; the pending mouse accumulator is
+  cleared on pause and resume (no burst-spin).
+- [ ] A rejected lock request (e.g. Chromium's ~1.25 s post-Escape cooldown) leaves
+  the game paused and shows the hint.
+- [ ] TITLE click starts the game (confirm) and never requests lock; the same
+  gesture (or a start keypress) unlocks the AudioContext (sound audible after).
+- [ ] AudioContext recovers (`resume()`) after a tab-switch/OS interruption
+  (Safari 'interrupted'): audio returns on resume.
+- [ ] Private-mode / storage-quota: game runs, nothing persists, no console errors.
+- [ ] Window ≥ 1024×768 letterboxes and plays; a smaller window does not crash.
+
+#### Visual identity checklist (§15.12) — verify from a screenshot/short capture
+- [ ] (a) glowing wireframe on black · (b) claw rim cursor · (c) current lane
+  highlighted · (d) Flippers rotate lane-over-lane · (e) color band changes at the
+  16→17 boundary · (f) all entities/text stroked line art (no sprites/bitmaps/fonts)
+  · (g) warp zoom down the well · (h) each enemy type distinguishable by
+  silhouette+color in one screenshot.
 
 ---
 

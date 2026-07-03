@@ -770,7 +770,14 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
   lanes, 8 enemy shots, 8 player shots, and the particle system saturated at
   its cap (a fresh kill-burst spawned every tick plus a standing player-death
   burst, so the live particle count sits at the pool maximum) — so a pass
-  guarantees headroom for any legal in-game state. Because Canvas-2D fill
+  guarantees headroom for any legal in-game state. The bench runs in a
+  **census-hold mode**: the player is invulnerable and no enemy despawns or
+  completes, and the census (enemy, shot, and spike counts) is topped back up to
+  the pinned maximum at the end of every tick. Entities still move, flip, pulse,
+  and animate each tick, so sim-update and render both do worst-case work for
+  the full 60 s — without this the pinned load would collapse within ~1 s (a
+  death clears the well via GET_READY, or scripted fire depletes it) and the
+  gate would silently measure a near-empty scene. Because Canvas-2D fill
   cost (dominated by the layered glow) scales with backing-store pixels, the
   bench also pins its render resolution: it runs at the **1440×1080 reference
   playfield at DPR 2 (a 2880×2160 backing store)** regardless of actual window
