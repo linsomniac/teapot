@@ -27,7 +27,29 @@ the picture.
 - **Raised by:** anticipated follow-on to the enemy-shot-farming finding (round 1,
   gameplay dimension); pre-emptively documented.
 - **Rejected because:** trim points are rate-bounded by player fire rate
-  (~10 pts/s vs. thousands/minute from normal play), require standing on a spiked
-  lane, and the wave cannot stall indefinitely for farming purposes without the
-  player forgoing all meaningful scoring. Enemy-shot farming was the real exploit
-  and was fixed by setting enemy-shot points to 0 (D14).
+  (~7 pts/s at fireInterval 0.15 s vs. thousands/minute from normal play), require
+  standing on a spiked lane, and the wave cannot stall indefinitely for farming
+  purposes without the player forgoing all meaningful scoring. Enemy-shot farming
+  was the real exploit and was fixed by setting enemy-shot points to 0 (D14).
+
+## R4. "Make enemy-shot interception non-guaranteed (shots sometimes pass the player's stream)"
+
+- **Raised by:** internal review round 3 (gameplay dimension), as sub-suggestion
+  (b) of the hold-fire-camping finding.
+- **Rejected because:** in 1-D lane combat a continuous stream of swept-collision
+  shots necessarily intercepts anything on the lane — that is inherent to the
+  geometry, matches the original (player shots destroy enemy shots), and making
+  interception probabilistic would feel like random unfair deaths. Camping is
+  instead broken where it was actually won: the guaranteed mid-flip rim kill
+  (fireInterval now exceeds the flip-landing window — D29) and Fuseball rim
+  entries, with a §13 anti-camping test asserting a stationary hold-fire run
+  dies. The other sub-suggestions (fire-cadence change, anti-camping test) were
+  accepted.
+
+## R5. "§12.6 references a nonexistent acceptance criterion 15.7"
+
+- **Raised by:** codex review round 3.
+- **Rejected as factually incorrect:** §15 is a numbered list and item 7 is the
+  performance criterion, with explicit thresholds and environment. The
+  cross-reference wording was nevertheless clarified to "§15 criterion 7" to
+  prevent the misread.

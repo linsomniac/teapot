@@ -203,3 +203,54 @@ Flip direction during the climb was unspecified. Chose player-seeking (shortest
 arc at flip start, ties clockwise, no flip when already on the player's lane) —
 matches the original's menace and is deterministic; a random walk would make
 early levels aimless and is harder to reason about in tests.
+
+## D29. fireInterval 0.15 s + anti-camping test; spikeTrim raised to 0.08 (review round 3)
+
+Review proved hold-fire lane camping was invulnerable through level 10: auto-fire
+at 0.1 s guaranteed a shot inside every 0.125 s flip-landing window, so every rim
+Flipper died mid-flip with zero timing skill. fireInterval is now 0.15 s — longer
+than half a flip — so the point-blank save is a timed shot again and camping loses
+to rim Flippers probabilistically (and to Fuseballs outright). The constraint
+`fireInterval > flipAnimTime / 2` is recorded in the tuning table, and a §13 test
+asserts a scripted stationary hold-fire run dies within 90 s. spikeTrim rises
+0.05 → 0.08 so the slower fire rate still satisfies the descent fairness
+invariant.
+
+## D30. Bonus-life interval raised to 30,000 (review round 3)
+
+At 20,000, a maximum tail wave (level 96+ budgets, Fuseballs killed at the rim,
+capped clear bonus) was worth 19,650–22,650 — at least a break-even life per
+wave, i.e. practical immortality. 30,000 restores the margin, and a §13 economy
+test computes the maximum attainable tail-wave score and asserts it stays below
+the interval, making the anti-immortality property machine-checked.
+
+## D31. Rim-grab death is immediate; no carry-down gameplay (review round 3)
+
+The original drags the grabbed player down the well. Here death resolves
+instantly in the sim (one rule for all death causes); the renderer may show the
+grab/drag as presentation. Recorded so fidelity reviews treat it as a choice.
+
+## D32. Spikers do not count toward MaxOnWell (review round 3)
+
+Spikers never fire, never leave, and cycle indefinitely; counting them let a
+player park harmless Spikers in the concurrency budget and throttle all real
+threats to a trickle (4 of 7 slots at level 17). Spawn concurrency now counts
+threatening types only.
+
+## D33. Enemy shot speed scales with level (EShot column) (review round 3)
+
+A constant 0.5 depth/s left enemy fire toothless at every level while every
+other pressure parameter scaled. EShot is now an anchor-table column
+(0.40 → 1.10 depth/s); added now because the table's structure is frozen even
+though its values are tunable.
+
+## D34. GET_READY is a sim state; performance gate is work-time only (review round 3)
+
+Two structural clarifications forced by review: (1) the post-death "get ready"
+pause is deterministic gameplay timing, so it is now a first-class sim state
+(PLAYING → GET_READY → PLAYING) with defined input handling (movement yes,
+fire/zap no), rather than an undocumented sub-phase; level-start fade-in is
+presentation only. (2) The §15 performance gate is per-frame main-thread work
+time alone; dropped-frame percentage is informational because any rAF-derived
+frame metric is display/VRR-dependent and would make acceptance depend on the
+tester's monitor.
