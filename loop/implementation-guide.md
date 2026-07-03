@@ -215,9 +215,14 @@ export interface Enemy {
   flip: { from: number; to: number; progress: number } | null;
   flipTimer: number;    // seconds until next flip attempt
   fireTimer: number;    // seconds until next shot attempt (firing kinds)
-  rimTimer?: number;    // fuseball rim residency countdown (§6.4)
-  climbDir?: 1 | -1;    // pulsar/spiker oscillation direction (§6.3/6.5)
-  speedMul?: number;    // fuseball current jitter multiplier (§6.4)
+  climbDir?: 1 | -1;    // spiker/pulsar/fuseball climb(+1)/descend(-1) phase (§6.3/6.4/6.5)
+  // Per-kind fields (each task below adds its own and hashes it — Phase 4 preamble):
+  rimTimer?: number;      // fuseball rim residency countdown (Task 4.4, §6.4)
+  jitterTimer?: number;   // fuseball 0.5 s speed-redraw clock (Task 4.4)
+  speedMul?: number;      // fuseball current jitter multiplier (Task 4.4, §6.4)
+  descentTarget?: number; // fuseball post-rim descent target depth ∈ [0.6,1] (Task 4.4)
+  spikeH?: number;        // spiker's own max reach for this lane cycle (Task 4.3)
+  pulseJoined?: boolean;  // pulsar participates in the current pulse cycle (Task 4.5, §6.5)
 }
 export interface Shot { lane: number; depth: Depth; prevDepth: Depth; }
 export interface Spike { lane: number; topDepth: Depth; }  // occupies [topDepth,1]
@@ -427,7 +432,11 @@ export function sweptOverlap(prevA: number, currA: number, extA: number,
 
 **Interfaces (Produces):**
 ```ts
-export interface LevelParams { /* one resolved value per §8.2 column */ }
+export interface LevelParams {   // one resolved value per §8.2 column
+  flip: number; tank: number; spik: number; fuse: number; puls: number;  // budgets
+  maxOnWell: number; climb: number; flipInt: number; fireInt: number;
+  maxShots: number; eshot: number; spikeH: number; pulse: number; spawnInt: number;
+}
 export function paramsForLevel(level: number, anchors: DifficultyAnchor[]): LevelParams; // §8.1
 ```
 - [ ] **Test (§13 spawner/difficulty area):** exact anchor values at anchor levels;
@@ -459,9 +468,10 @@ export function paramsForLevel(level: number, anchors: DifficultyAnchor[]): Leve
 // level-select bounds (§8.5) and high-score qualification (§10) WITHOUT reading
 // localStorage itself (the sim stays pure — §12.2). The app persists the sim's
 // updated highScores/maxLevelReached back after the game (Task 11.1/11.2).
+import type { HsEntry } from './highscore';
 export interface InitialSave {
   maxLevelReached: number;
-  highScores: { initials: string; score: number; level: number }[];  // sorted desc, ≤10
+  highScores: HsEntry[];   // the shared row shape (Task 3.1's sim/highscore.ts); sorted desc, ≤10
 }
 export interface SimState {
   phase: Phase; level: number; score: number; lives: number;
@@ -475,11 +485,12 @@ export interface SimState {
   spawnTimer: number; pulseClock: number; getReadyTimer: number;
   beatTimer: number;                    // game-over beat countdown (§8.3/§10)
   fireCooldown: number; maxLevelReached: number;
-  selector: number;                     // level-select / high-score cursor value
+  selector: number;                     // level-select value (the chosen level)
   selectorAccum: number;                // UI movement accumulator (§10, Task 6.1)
   selectorTimer: number;                // UI step-rate limiter (§10, Task 6.1)
-  hsInitials: number[]; hsSlot: number; // high-score entry in progress (§10)
-  highScores: InitialSave['highScores'];// in-session table (seeded from InitialSave)
+  hsInitials: number[]; hsSlot: number; // high-score entry in progress: char index
+                                        // per slot + active slot (§10)
+  highScores: HsEntry[];                // in-session table (seeded from InitialSave)
   rng: Rng;
 }
 export interface Sim {
@@ -492,6 +503,16 @@ export function createSim(config: GameConfig, seed: number, initialSave?: Initia
 // pure transition helper, unit-tested directly (§10):
 export function transition(s: SimState, input: InputSnapshot, cfg: GameConfig,
                            events: SimEvent[]): void;
+// pure level (re)initializer — used for the FIRST level here (LEVEL_SELECT→PLAYING)
+// and every subsequent level by Task 5.2 (WARP→PLAYING). paramsForLevel (Task 2.3)
+// and the Task 1.4 geometry/palette helpers already exist:
+export function beginLevel(s: SimState, level: number, cfg: GameConfig): void;
+// Optional debug entry for the bench (Task 11.3): construct a Sim around a
+// caller-supplied full SimState and a benchMode flag; when benchMode is set the
+// death/despawn/wave-completion steps are suppressed (census-hold, §12.6). No
+// normal code path uses it, so it doesn't affect determinism of real play.
+export function createSimFromState(state: SimState, config: GameConfig,
+                                   benchMode: boolean): Sim;
 ```
 - [ ] Create `src/sim/hash.ts` now with `hashState(s: SimState): number` covering
   the fields defined so far. **Every later task that adds a future-affecting field
@@ -519,6 +540,11 @@ export function insertScore(scores: HsEntry[], e: HsEntry): HsEntry[];  // rank 
 - [ ] **Test (§10 qualification, §13 persistence area):** `qualifies`/`insertScore`
   — <10 entries always qualify; ≥ 10th qualifies; a new entry ranks **above** an
   existing equal score; the table truncates to 10.
+- [ ] **Test `beginLevel`:** sets `level`, recomputes `geometryIndex`/`closed`/palette
+  (Task 1.4), resets Superzapper to FULL, clears spikes and shots, resets rim to
+  lane-8 center (§5), reloads per-type `budget` from `paramsForLevel` (Task 2.3),
+  sets `maxLevelReached=max(old,level)` (§8.5). LEVEL_SELECT→PLAYING calls it for the
+  first level; Task 5.2 reuses it for subsequent levels.
 - [ ] Implement the tick pipeline skeleton (the §6 tick-order steps as ordered
   function calls, most no-ops until their tasks land). Commit.
 
@@ -558,7 +584,8 @@ export function applyScore(s: SimState, points: number, cfg: GameConfig,
   kill depth; zero-point Tanker rim self-split; clear bonus and its level-96 cap;
   bonus-life rule = grant `floor(score/interval) − livesGranted`; a threshold crossed
   by the clear bonus grants a life; a threshold crossed by kill points on a tick the
-  player also died nets zero.
+  player also died nets zero; **a single score gain that crosses two thresholds at
+  once grants two lives** (guards a naive one-life-per-update implementation).
 - [ ] Implement. Commit.
 
 ---
@@ -566,8 +593,10 @@ export function applyScore(s: SimState, points: number, cfg: GameConfig,
 ## Phase 4 — Enemies
 
 Each enemy task adds: spawn init, per-tick update, and its §13 behavior tests. All
-motion is lane-based, depth frozen during flips (§6). Add each kind's fields to the
-hash as you go.
+motion is lane-based, depth frozen during flips (§6). Add each kind's new
+future-affecting `Enemy` fields (Task 1.1) to `hashState` (Tasks 12.1/12.3) in the
+same commit. The death, despawn, and wave-completion steps must honor the sim's
+`benchMode` flag (no-op when set) so the bench's census-hold works (Task 11.3).
 
 ### Task 4.1: Flip mechanics + Flipper
 
@@ -685,7 +714,9 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   spawn only if threatening on-well count < MaxOnWell (Spikers excluded) and budget
   remains; type drawn weighted by remaining budget; lane uniform, except Spikers
   exclude lanes already holding a Spiker (defer if none free); per-type budgets match
-  the table initially. Commit.
+  the table initially. **A newly spawned enemy sets `prevLane=currLane`,
+  `prevDepth=currDepth`** (the teleport-no-tween convention, §11.1) — asserted here;
+  the warp/level-start teleport resets are asserted in Tasks 5.1/5.2. Commit.
 
 ---
 
@@ -693,13 +724,14 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 
 ### Task 5.1: Wave completion + level advance
 
-**Files:** `src/sim/state.ts` (advance logic), tests.
+**Files:** `src/sim/state.ts` (advance logic), tests. (`beginLevel` was produced in
+Task 3.1; this task wires wave completion → WARP and Task 5.2 calls `beginLevel` for
+the next level.)
 - [ ] **Test:** wave completes only in PLAYING, never on a death tick, when budget
   exhausted AND no enemies remain; awards clear bonus (then bonus-life re-check, §6
-  step 8); PLAYING→WARP; enemy shots cancelled, spikes remain. On the next PLAYING
-  entry: level increments, geometry/palette recompute (Task 1.4 helpers),
-  Superzapper resets to FULL, spikes cleared, rim position resets to lane 8 center
-  (§5), and `maxLevelReached = max(old, newLevel)` (§8.5). Commit.
+  step 8); PLAYING→WARP; enemy shots cancelled, spikes remain. (The end-to-end
+  WARP→PLAYING → `beginLevel(next)` assertion lands in Task 5.2, which builds that
+  edge.) Commit.
 
 ### Task 5.2: Warp descent + fairness
 
@@ -714,7 +746,9 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   spike the Blaster would hit this tick, with a scripted shot that trims it to safety
   the same tick; assert the Blaster **survives** (step-3 trim before step-5 warp
   lethality). **Descent-fairness invariant test:** simulate the actual descent on a
-  max-`SpikeH` spike with scripted hold-fire; assert no spike collision. Commit.
+  max-`SpikeH` spike on the Blaster's lane with scripted hold-fire; assert no spike
+  collision — **and a paired control run with fire disabled DOES collide** (proves the
+  spike is on-lane and lethal, so the passing case isn't vacuous). Commit.
 
 ### Task 5.3: GET_READY + death/respawn
 
@@ -731,9 +765,10 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 
 **Files:** `src/sim/superzapper.ts`, tests.
 - [ ] **Test (§13 Superzapper area):** FULL→PARTIAL destroys all on-well enemies
-  (Tankers not split, 0 points); PARTIAL→EMPTY destroys the enemy nearest the rim
-  (ties lowest lane index; mid-flip uses occupancy-half lane); EMPTY no-op; activating
-  with empty well consumes the use; accepted only in PLAYING; resets to FULL at level
+  (Tankers not split, 0 points) **while enemy shots and spikes are unaffected** (§5);
+  PARTIAL→EMPTY destroys the enemy nearest the rim (ties lowest lane index; mid-flip
+  uses occupancy-half lane); EMPTY no-op; activating with empty well consumes the
+  use; accepted only in PLAYING (rejected in GET_READY/WARP); resets to FULL at level
   start; not restored by death. Commit.
 
 ---
@@ -747,9 +782,9 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   lanes, ≤ 1 per UI-step interval, accumulator reset on emit and cleared on
   zero-cross/state entry (held-then-release emits no backlog); level-select opens at
   `max(9,maxLevelReached)`, clamps 1..max (no wrap); high-score entry over
-  space,A–Z,0–9 (default A), fire locks+advances, third fire → TITLE, back returns a
-  slot; TITLE click carve-out = confirm; qualification predicate (≤10, ties rank new
-  above equal). Commit.
+  space,A–Z,0–9 (default A, **wraps** at both ends), fire locks+advances, third fire →
+  TITLE, back returns a slot (**inert on the first slot**); TITLE click carve-out =
+  confirm; qualification predicate (≤10, ties rank new above equal). Commit.
 
 ### Task 6.2: Quit-to-title + full transition set
 
@@ -804,12 +839,15 @@ Keep hot paths allocation-free (reuse buffers; I3).
   the claw at the fractional interpolated `rimPos`. Interpolate entity prev→curr by
   alpha along shortest arc; teleporting entities set prev=curr. Commit.
 
-### Task 8.3: Entities (per-type silhouettes/colors) + particles
+### Task 8.3: Entities (per-type silhouettes/colors) + shots + particles + Superzapper FX
 - [ ] Distinct stroked silhouettes + fixed colors (Flipper red, Tanker purple,
   Spiker/spike green, Fuseball multicolor, Pulsar cyan→white telegraph); band-colored
   well drawn dimmed/desaturated so full-brightness enemies read (§11.1/D35). Flip
-  drawn as lane-over-lane rotation from `flip` phase (not a slide). Particle bursts
-  use the render-side RNG. Commit.
+  drawn as lane-over-lane rotation from `flip` phase (not a slide). **Player vs enemy
+  shots visually distinct** (enemy shots are small bright dashes, §11.1). **Superzapper
+  full-screen effect** (screen-wide flash + expanding line burst, on the `superzap`
+  event, §11.1). Particle bursts (incl. the bigger player-death burst) use the
+  render-side RNG. Commit.
 
 ### Task 8.4: HUD + screens
 - [ ] HUD (score, high score, lives, Superzapper pips, level); title (logo, top-10,
@@ -842,9 +880,11 @@ Keep hot paths allocation-free (reuse buffers; I3).
 **Files:** `src/input/capture.ts`.
 - [ ] Keyboard; pointer-lock request on canvas click in PLAYING/GET_READY/WARP
   (`unadjustedMovement:true`, retry without on not-supported, defensive non-Promise
-  return); consume lock/unpause/title clicks (not fire); clear the mouse accumulator
-  on pause/resume; suppress context menu for right-click zap. (Behavior verified via
-  the §13 manual browser-integration checklist.) Commit.
+  return); **exit any held pointer lock when the sim phase leaves
+  PLAYING/GET_READY/WARP** (observe phase transitions and call
+  `document.exitPointerLock()` — §5); consume lock/unpause/title clicks (not fire);
+  clear the mouse accumulator on pause/resume; suppress context menu for right-click
+  zap. (Behavior verified via the §13 manual browser-integration checklist.) Commit.
 
 ---
 
@@ -873,14 +913,15 @@ Keep hot paths allocation-free (reuse buffers; I3).
 - [ ] `?bench=1`: gesture-start, fixed 2880×2160 backing store, max-legal-load census
   (24 threatening + 7 Spikers + 16 full spikes + active pulse + 8+8 shots + saturated
   particles). The census exceeds MaxOnWell, so the bench builds a `SimState`
-  **directly** (a debug constructor that places entities/spikes/shots into the state
-  arrays, bypassing the spawner's MaxOnWell gate) rather than playing up to it. It
-  then ticks the real sim + renderer for 60 s (seeded, scripted inputs) in
-  **census-hold mode** (§12.6): a bench flag makes the player invulnerable and
-  suppresses enemy despawn/completion, and after each tick the debug constructor
-  tops the census back up to the pinned maximum — entities still move/flip/pulse/
-  animate, so sim-update and render stay worst-case for the full 60 s (a plain real
-  run would collapse to a near-empty well within ~1 s). Report mean & p95
+  **directly** and wraps it with `createSimFromState(state, config, /*benchMode*/true)`
+  (the debug entry produced in Task 3.1), bypassing the spawner's MaxOnWell gate. It
+  then ticks that sim + renderer for 60 s (seeded, scripted inputs) in **census-hold
+  mode** (§12.6): `benchMode` makes the player invulnerable and suppresses enemy
+  despawn/completion (the death/despawn/wave-completion steps consult it — Phase 4/5
+  preamble), and after each tick the bench tops the census back up to the pinned
+  maximum — entities still move/flip/pulse/animate, so sim-update and render stay
+  worst-case for the full 60 s (a plain real run would collapse to a near-empty well
+  within ~1 s). Report mean & p95
   (nearest-rank, drop frame 1) **work time** + informational dropped-frame %/rAF
   stats as console JSON + on screen. F3 frame-time overlay in normal play (§12.6).
   Commit.
@@ -899,10 +940,13 @@ Keep hot paths allocation-free (reuse buffers; I3).
 
 ### Task 12.2: Golden replay + self-consistency
 **Files:** `src/__tests__/fixtures/frozenConfig.ts`, `src/__tests__/replay.test.ts`.
-- [ ] Frozen `GameConfig` snapshot; scripted input sequence over several levels; assert
-  exact final `{hash, score, level, lives, superzapper, census}`; self-consistency:
-  two runs of same seed+script → identical per-tick hashes. Commit. (Re-record golden
-  only on intentional rule changes / reviewed engine upgrade; CI pins Node — I2.)
+- [ ] Frozen `GameConfig` snapshot; scripted input sequence that **reaches at least
+  level 17** so the run exercises all five enemy types incl. Fuseballs (11+) and
+  Pulsars (17+) — the hardest determinism cases (RNG-driven jitter, pulse clock);
+  assert exact final `{hash, score, level, lives, superzapper, census}`;
+  self-consistency: two runs of same seed+script → identical per-tick hashes. Commit.
+  (Re-record golden only on intentional rule changes / reviewed engine upgrade; CI
+  pins Node — I2.)
 
 ### Task 12.3: Hash-completeness test
 **Files:** `src/__tests__/hashCompleteness.test.ts`.
@@ -951,6 +995,9 @@ notes in `loop/acceptance-results.md`. These are behaviors unit tests cannot rea
   keydown); blur/tab-hide auto-pauses; lock loss for any reason auto-pauses.
 - [ ] Auto-pause fires only in PLAYING/GET_READY/WARP and is ignored on menu /
   game-over screens.
+- [ ] The pointer lock is released when the game leaves PLAYING/GET_READY/WARP
+  (death → GAME_OVER, quit, wave → the transient before next PLAYING): the OS
+  cursor reappears and menu screens are mouse-inert (§5).
 - [ ] Click-to-resume re-requests the lock only if it was held at pause; P resumes
   on keyboard; the resume click does not fire; the pending mouse accumulator is
   cleared on pause and resume (no burst-spin).
@@ -962,6 +1009,10 @@ notes in `loop/acceptance-results.md`. These are behaviors unit tests cannot rea
   (Safari 'interrupted'): audio returns on resume.
 - [ ] Private-mode / storage-quota: game runs, nothing persists, no console errors.
 - [ ] Window ≥ 1024×768 letterboxes and plays; a smaller window does not crash.
+- [ ] **Per-SFX (§11.2, criterion 9)** — each fires on its event and is audibly
+  distinct: player shot · enemy shot · enemy death · player death · Flipper flip ·
+  Superzapper · warp descent · spike hit · Pulsar pulse telegraph · bonus life ·
+  high-score jingle · UI move/confirm. M mutes/unmutes everywhere and persists.
 
 #### Visual identity checklist (§15.12) — verify from a screenshot/short capture
 - [ ] (a) glowing wireframe on black · (b) claw rim cursor · (c) current lane
