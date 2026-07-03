@@ -143,6 +143,7 @@ teapot/
       bench.ts               # ?bench=1 harness (§12.6)
       app.ts                 # wires sim+render+audio+input+persist
     __tests__/
+      fixtures/liveConfig.ts     # makeLiveConfig() from live data modules (Task 3.1)
       fixtures/frozenConfig.ts   # frozen GameConfig snapshot for golden tests (§13)
       replay.test.ts             # golden replay + self-consistency (§13)
       hashCompleteness.test.ts   # (§12.2/§13)
@@ -306,7 +307,8 @@ export interface Tuning {   // every §8.3 constant, concrete
   descentSpeed: number;
   halfExtents: { enemy: number; shot: number; spikeTop: number; blaster: number };
   startingLives: number; getReadyDuration: number; gameOverBeat: number;
-  flipSeekBias: number; uiStepInterval: number; }
+  flipSeekBias: number; uiStepInterval: number;
+  particlePoolCap: number; }   // render-side max live particles (bench census, §12.6)
 export interface Scoring { flipper: number; tanker: number; spiker: number;
   fuseballBands: [number, number, number]; pulsar: number; enemyShot: number;
   spikeTrimPoints: number;            // POINTS per trim (=1); distinct from
@@ -325,7 +327,12 @@ export function validateConfig(c: GameConfig): void;  // throws on violation
   `flipInt ≥ 2·flipAnimTime`, `perTickClamp < 0.5`,
   `pulse ≥ telegraph + pulseDuration`). This is part of the §13
   "tuning-constraint guards" area (the *interpolated-table* guard is in Task 2.3).
-- [ ] Implement `validateConfig` from §8.2 column notes + §8.3 table. Commit.
+- [ ] Implement `validateConfig` from §8.2 column notes + §8.3 table. (The positive
+  "accepts" test at this task builds a minimal hand-crafted valid config with
+  placeholder geometries — real geometries are authored in Task 1.5; Task 3.1 adds
+  the `validateConfig(makeLiveConfig())` guard once all four live modules exist, so
+  the level-independent constants `fireInterval`/`perTickClamp` are guarded against
+  live values, §13.) Commit.
 - [ ] **Author the live data modules** here or in the task that first consumes each
   (per I4): `data/tuning.ts` (§8.3), `data/difficulty.ts` (§8.2 anchors, `—`→null),
   `data/scoring.ts` (§7). `data/geometries.ts` is authored in Task 1.5. The frozen
@@ -402,11 +409,16 @@ export function laneWidthAtRim(g: Geometry, vp: Viewport): number;  // min px, f
   `geometry.validate.test.ts` — min projected rim lane width ≥ 24 px at 1440×1080
   for all 16 geometries (uses `laneWidthAtRim`, now available). Iterate any failing
   geometry's vertices until it passes.
-- [ ] Implement as linear interpolation between the rim polygon (depth 0) and a
-  far rim (depth 1) = each rim vertex scaled toward the vanishing point by a fixed
-  `FAR_SCALE = 0.15` (the far ring is 15% size, not a full collapse to a point, so
-  the 16 depth-1 spawn points stay separable); `vanishing` is an offset in playfield
-  pixels from the playfield center (so `vanishingPoint = center + g.vanishing`); a
+- [ ] `Geometry.rim` vertices are authored in the **1440×1080 reference playfield
+  coordinate space** (origin at playfield center); `project` scales the result to the
+  actual letterboxed viewport. Implement as interpolation between the near rim (depth
+  0) and a far rim (depth 1) = each rim vertex scaled toward the vanishing point by a
+  fixed `FAR_SCALE = 0.15` — the shrinking far ring **is** the perspective
+  foreshortening the well needs (§11.1); it's an affine near→far interpolation that
+  reads as perspective, not a full projective transform (adequate for line art). The
+  far ring is 15% size, not a collapse to a point, so the 16 depth-1 spawn points
+  stay separable. `vanishing` is an offset in reference-space pixels from the
+  playfield center (so `vanishingPoint = center + g.vanishing`); a
   lane center (integer lane `i`) = midpoint of rim vertices `i, i+1`; a **fractional**
   lane (for the claw at `rimPos`) samples the rim polyline at vertex index
   `rimPos + 0.5` (linear between the two nearest vertices, wrapping on closed wells),
@@ -503,7 +515,7 @@ export interface SimState {
   livesGranted: number;                 // for bonus-life accounting (§7)
   rimPos: number; prevRimPos: number;   // prev for claw interpolation (§11.1/Task 8.2)
   warpDepth: number; prevWarpDepth: number;  // Blaster descent + interpolation
-  closed: boolean; geometryIndex: number;
+  closed: boolean; geometryIndex: number; paletteIndex: number;  // §4, set by beginLevel
   enemies: Enemy[]; playerShots: Shot[]; enemyShots: Shot[]; spikes: Spike[];
   budget: Record<EnemyKind, number>;    // remaining spawn budget (§6)
   superzapper: 0 | 1 | 2;               // EMPTY/PARTIAL/FULL (§5)
@@ -523,7 +535,10 @@ export interface Sim {
   getState(): Readonly<SimState>;
   hash(): number;
 }
-// initialSave defaults to { maxLevelReached: 1, highScores: [] } when omitted.
+// createSim calls validateConfig(config) at construction (so every Phase 3+ test
+// built on makeLiveConfig implicitly guards the live tuning constants — including the
+// level-independent perTickClamp/fireInterval that Task 2.3's per-level loop can't
+// reach, §13). initialSave defaults to { maxLevelReached: 1, highScores: [] }.
 export function createSim(config: GameConfig, seed: number, initialSave?: InitialSave): Sim;
 // pure transition helper, unit-tested directly (§10):
 export function transition(s: SimState, input: InputSnapshot, cfg: GameConfig,
@@ -569,6 +584,12 @@ export const HS_CHARSET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';  // space fir
   confirm (the slot-by-slot entry loop itself is Task 6.1) and calls `insertScore`
   into `state.highScores`. (WARP/GET_READY/quit edges added in Tasks 5.x/6.x.) Assert
   **no** undeclared transition fires.
+- [ ] Create `src/__tests__/fixtures/liveConfig.ts` — `makeLiveConfig(): GameConfig`
+  bundling the live `GEOMETRIES`/`DIFFICULTY`/`TUNING`/`SCORING` (all authored by end
+  of Phase 1). Every Phase 3+ test builds its config from it (Conventions).
+- [ ] **Test (live tuning guard, §13):** `validateConfig(makeLiveConfig())` does not
+  throw — this exercises the level-independent constants (`fireInterval`,
+  `perTickClamp`) that the per-level guard (Task 2.3) cannot reach.
 - [ ] **Test (§10 qualification, §13 persistence area):** `qualifies`/`insertScore`
   — <10 entries always qualify; ≥ 10th qualifies; a new entry ranks **above** an
   existing equal score; the table truncates to 10.
@@ -695,7 +716,7 @@ export function updateSpiker(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   shot at the tip with Spiker at/above kills the Spiker, else trims once and is
   consumed; enemies below a spike top are shielded; spikes persist across death,
   cleared at level start; Spikers don't count toward MaxOnWell; **the instantaneous
-  bottom lane-switch sets `prevLane=currLane` (teleport-no-tween, §11.1)**.
+  bottom lane-switch sets `prevLane=lane` (teleport-no-tween, §11.1)**.
 - [ ] **Test (§7 spike-trim scoring):** a successful trim awards
   `cfg.scoring.spikeTrimPoints` (1) and runs the normal bonus-life rule (§6 step 6);
   a shot that kills the Spiker (tip priority) awards the Spiker's 50, not a trim
@@ -760,8 +781,8 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   spawn only if threatening on-well count < MaxOnWell (Spikers excluded) and budget
   remains; type drawn weighted by remaining budget; lane uniform, except Spikers
   exclude lanes already holding a Spiker (defer if none free); per-type budgets match
-  the table initially. **A newly spawned enemy sets `prevLane=currLane`,
-  `prevDepth=currDepth`** (the teleport-no-tween convention, §11.1) — asserted here;
+  the table initially. **A newly spawned enemy sets `prevLane=lane`,
+  `prevDepth=depth`** (the teleport-no-tween convention, §11.1) — asserted here;
   the warp/level-start teleport resets are asserted in Tasks 5.1/5.2. Commit.
 
 ---
@@ -832,7 +853,9 @@ the next level.)
   `max(9,maxLevelReached)`, clamps 1..max (no wrap); high-score entry over
   space,A–Z,0–9 (default A, **wraps** at both ends), fire locks+advances, third fire →
   TITLE, back returns a slot (**inert on the first slot**); TITLE click carve-out =
-  confirm; qualification predicate (≤10, ties rank new above equal). Commit.
+  confirm; qualification predicate (≤10, ties rank new above equal); **on
+  TITLE→LEVEL_SELECT entry `selector` initializes to `max(9, maxLevelReached)`** (the
+  default open value, §8.5) and `selectorAccum` clears. Commit.
 
 ### Task 6.2: Quit-to-title + full transition set
 
@@ -959,7 +982,10 @@ Keep hot paths allocation-free (reuse buffers; I3).
   (P or click); Quit-to-title (Q → `input.quit`) (§10, D19). Seed from
   `Date.now()`⊕`crypto` at game start (§12.3). **At startup, initialize the audio
   mute state from the persisted `settings.muted`** (via the storage adapter, Task
-  11.1) — mirroring the persist-back — so a game left muted starts muted. Commit.
+  11.1) — mirroring the persist-back — so a game left muted starts muted. The
+  app-layer **M keydown toggles mute and persists `settings.muted` immediately**
+  (through the storage adapter, from any screen — not only at game end), so mute
+  survives a reload even if toggled on the title screen (§11.2/§15.6). Commit.
 
 ### Task 11.3: Bench mode + frame-time overlay
 **Files:** `src/app/bench.ts`.
@@ -997,7 +1023,9 @@ Keep hot paths allocation-free (reuse buffers; I3).
   `initialSave.maxLevelReached = 17` and script LEVEL_SELECT to pick 17 (§8.5), so
   the very first wave exercises all five enemy types incl. Fuseballs (11+) and
   Pulsars (17+) — the hardest determinism cases (RNG jitter, pulse clock) — without
-  scripting a 17-level clear;
+  scripting a 17-level clear; the script **clears at least one wave so the run
+  crosses a WARP→PLAYING transition** (per §13's "multi-level sim run", exercising
+  warp + level advance in the golden);
   assert exact final `{hash, score, level, lives, superzapper, census}`;
   self-consistency: two runs of same seed+script → identical per-tick hashes. Commit.
   (Re-record golden only on intentional rule changes / reviewed engine upgrade; CI
@@ -1005,8 +1033,11 @@ Keep hot paths allocation-free (reuse buffers; I3).
 
 ### Task 12.3: Hash-completeness test + benchMode census-hold test
 **Files:** `src/__tests__/hashCompleteness.test.ts`, `src/__tests__/benchMode.test.ts`.
-- [ ] Mutate each state category (entity field, timer, RNG state, score, budget, pulse
-  clock, phase) and assert the hash changes — guards against an omitted field.
+- [ ] Mutate each state category and assert the hash changes — guards against an
+  omitted field. Cover **all** future-affecting categories per §12.2: an entity
+  field (lane/depth/flip/timers), a `playerShots`/`enemyShots` entry, a `spikes`
+  entry, RNG state, score, `lives`, `livesGranted`, a `budget` value, `pulseClock`,
+  each timer (spawn/getReady/beat/fireCooldown), rimPos, superzapper, and `phase`.
 - [ ] **benchMode census-hold test:** build a `SimState` with a lethal condition (a
   pulse on the player's lane) and 24 enemies, wrap with
   `createSimFromState(state, cfg, true)`, tick several times; assert lives never
