@@ -126,7 +126,9 @@ lane math →1.4 · level mapping (geometry/palette) →1.4 · geometry validati
 →1.3 (anchors) + 2.3 (interpolated table) + 3.1 (live-config validate at createSim) ·
 stepper →2.1 · collision →2.2 ·
 tick-order same-tick save →4.1 (rim contact) + 4.5 (pulse) + 4.6 (enemy shot) + 5.2
-(warp trim) + 5.3 (kill+death) · difficulty/monotonicity →2.3 · spawner →4.7 ·
+(warp trim); same-tick kill+death (wave still completes) →5.3 · spike-trim scoring
+→4.3 · never-pierces →4.1 (stacked enemies) + 4.6 (enemy shot) · climb multipliers
+→4.1/4.x · SimEvent emission →4.x/12.2 · difficulty/monotonicity →2.3 · spawner →4.7 ·
 enemy fire →4.6 · high-score qualification/insertion →3.1 (sim-owned) ·
 scoring/economy →3.3/12.5 · Superzapper →5.4 · death/respawn →5.3 · Flipper →4.1 ·
 Tanker →4.2 · Spiker →4.3 · Fuseball →4.4 · Pulsar →4.5 · player firing →3.2 ·

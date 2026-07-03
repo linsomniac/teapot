@@ -229,8 +229,9 @@ export interface Enemy {
   jitterTimer?: number;   // fuseball 0.5 s speed-redraw clock (Task 4.4)
   speedMul?: number;      // fuseball current jitter multiplier (Task 4.4, §6.4)
   descentTarget?: number; // fuseball post-rim descent target depth ∈ [0.6,1] (Task 4.4)
-  spikeH?: number;        // spiker's own max reach for this lane cycle (Task 4.3)
   pulseJoined?: boolean;  // pulsar participates in the current pulse cycle (Task 4.5, §6.5)
+  // (Spiker reversal depth is 1 − LevelParams.spikeH — a per-level value, not a
+  //  per-enemy field; there is deliberately no Enemy.spikeH.)
 }
 export interface Shot { lane: number; depth: Depth; prevDepth: Depth; }
 export interface Spike { lane: number; topDepth: Depth; }  // occupies [topDepth,1]
@@ -387,8 +388,12 @@ export function paletteIndexForLevel(level: number): number;   // floor((level-1
 - [ ] **Test (the §4 structural-validation area — no projection needed):** for all
   16 — exactly 16 lanes (16/17 vertices per closed/open); no rim self-intersection
   (segment-pair cross test); indices 0–7 `closed`, 8–15 open, matching
-  `geometryIndexForLevel` (Task 1.4). (The projected-lane-width check is added in
-  Task 1.6, once projection exists.)
+  `geometryIndexForLevel` (Task 1.4); **winding convention (§4)** — closed wells have
+  a consistent signed rim area (assert the shoelace signed area is negative =
+  clockwise in screen space where +y is down, for every closed geometry), and open
+  wells have rim vertices whose x-coordinate is non-decreasing (left-to-right) so
+  increasing lane index reads left-to-right. (The projected-lane-width check is added
+  in Task 1.6, once projection exists.)
 - [ ] Implement geometries until the test passes (iterate vertex coords). Commit.
 
 ### Task 1.6: Projection math + projected-lane-width geometry check
@@ -528,8 +533,10 @@ export interface SimState {
   selector: number;                     // level-select value (the chosen level)
   selectorAccum: number;                // UI movement accumulator (§10, Task 6.1)
   selectorTimer: number;                // UI step-rate limiter (§10, Task 6.1)
-  hsInitials: number[]; hsSlot: number; // high-score entry in progress: char index
-                                        // per slot + active slot (§10)
+  hsInitials: number[]; hsSlot: number; // high-score entry in progress: HS_CHARSET
+                                        // index per slot + active slot; each slot
+                                        // inits to the index of 'A' (=1, since space
+                                        // is index 0), matching §10's "default A"
   highScores: HsEntry[];                // in-session table (seeded from InitialSave)
   rng: Rng;
 }
@@ -586,8 +593,11 @@ export const HS_CHARSET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';  // space fir
   edge) else to TITLE. For HIGH_SCORE_ENTRY→TITLE, here assert only that **the edge
   exists** — given an already-completed entry, the transition calls `insertScore`
   into `state.highScores` and lands in TITLE; the slot-by-slot 3-confirm counting
-  that drives it is built and tested in Task 6.1. (WARP/GET_READY/quit edges added in
-  Tasks 5.x/6.x.) Assert **no** undeclared transition fires.
+  that drives it is built and tested in Task 6.1. **LEVEL_SELECT→PLAYING also does
+  the once-per-game reset** `lives = tuning.startingLives`, `score = 0`,
+  `livesGranted = 0` (distinct from the per-level `beginLevel` resets, which leave
+  those alone since they persist across levels within a run). (WARP/GET_READY/quit
+  edges added in Tasks 5.x/6.x.) Assert **no** undeclared transition fires.
 - [ ] Create `src/__tests__/fixtures/liveConfig.ts` — `makeLiveConfig(): GameConfig`
   bundling the live `GEOMETRIES`/`DIFFICULTY`/`TUNING`/`SCORING` (all authored by end
   of Phase 1). Every Phase 3+ test builds its config from it (Conventions).
@@ -634,7 +644,10 @@ export function advanceShots(shots: Shot[], speed: number, dir: 1 | -1): void; /
   per-enemy tasks (4.1–4.6) plug their entities into that one pass rather than each
   running independent hit logic. The two-stacked-enemies never-pierce case is
   asserted in Task 4.1.
-- [ ] Implement in the tick pipeline (steps 1–2). Commit.
+- [ ] Implement in the tick pipeline (steps 1–2). **Task 3.2 stubs step 3** (no
+  shootable targets exist until Phase 4); **Task 4.1 builds the step-3 nearest-target
+  resolution framework** when the first enemy target lands, and 4.2–4.6 plug their
+  entities/shots/spikes into it. Commit.
 
 ### Task 3.3: Scoring + bonus life
 
@@ -663,11 +676,21 @@ export function applyScore(s: SimState, points: number, cfg: GameConfig,
 
 ## Phase 4 — Enemies
 
-Each enemy task adds: spawn init, per-tick update, and its §13 behavior tests. All
-motion is lane-based, depth frozen during flips (§6). Add each kind's new
+Each enemy task adds: spawn init, per-tick update, and its §13 behavior tests. Each
+task's **spawn init** sets that kind's Enemy fields at depth 1: `flip=null`,
+`prevLane=lane`, `prevDepth=depth`, `flipTimer=FlipInt` (flipping kinds),
+`fireTimer` drawn per §6 (firing kinds), `climbDir=+1` (spiker/pulsar/fuseball),
+plus the kind's extras (fuseball `speedMul`/`jitterTimer`/`descentTarget`, pulsar
+`pulseJoined=false`) — each task enumerates its own. All motion is lane-based, depth
+frozen during flips (§6). Add each kind's new
 future-affecting `Enemy` fields (Task 1.1) to `hashState` (Tasks 12.1/12.3) in the
 same commit. The death, despawn, and wave-completion steps must honor the sim's
 `benchMode` flag (no-op when set) so the bench's census-hold works (Task 11.3).
+Lethality steps 4–5 set a `playerDiedThisTick` flag and emit the `playerDied`
+event (consumed by `applyScore`'s bonus-life guard, Task 3.3); the Phase-4
+"dies"/"survives" tests assert this flag, and Task 5.3 later wires it to the
+life-decrement + PLAYING→GET_READY transition. (`playerDiedThisTick` is a
+per-tick transient, not hashed.)
 
 ### Task 4.1: Flip mechanics + Flipper
 
@@ -696,7 +719,11 @@ export function updateFlipper(e: Enemy, s: SimState, lp: LevelParams, cfg: GameC
   this tick; assert the player **survives** (step-3 kill before step-5 contact).
 - [ ] **Test (§6 never-pierces, stacked enemies):** two Flippers on the same lane at
   different depths; one player shot kills the nearer one and is consumed — the far
-  one survives this tick. Commit.
+  one survives this tick.
+- [ ] **Test (§8.3 climb multiplier):** a Flipper climbs at `Climb × climbMul.flipper`
+  (1.0) — assert its per-tick depth advance matches, so later kinds' multipliers
+  (Tanker 0.6, etc., verified in their tasks) have a shared reference. Also emits the
+  `flip` event on a flip and `enemyKilled{kind:'flipper',lane,depth}` on death. Commit.
 
 ### Task 4.2: Tanker
 
@@ -972,6 +999,22 @@ Keep hot paths allocation-free (reuse buffers; I3).
 
 ### Task 10.2: DOM capture + pointer lock
 **Files:** `src/input/capture.ts`.
+
+**Key/button → `InputSnapshot` binding table (§5/§10):**
+| Input | Binding |
+|---|---|
+| move | ←/→ arrows, A/D, pointer-locked mouse X |
+| fire | Space, left mouse (locked) |
+| zap | Z, right mouse |
+| confirm | Space or Enter (and a TITLE-only canvas click) |
+| back | Escape |
+| quit | Q (from the pause overlay) |
+
+- [ ] **Escape is phase-gated (one owner):** the input layer routes Escape as
+  `snapshot.back` while the sim is in a menu state (TITLE/LEVEL_SELECT/HIGH_SCORE_
+  ENTRY) and as the app-layer pause toggle while in PLAYING/GET_READY/WARP — it is
+  never both on one keypress. M (mute), P (pause), F3 (overlay), and Q (quit) are
+  app-layer, never sim inputs.
 - [ ] Keyboard; pointer-lock request on canvas click in PLAYING/GET_READY/WARP
   (`unadjustedMovement:true`, retry without on not-supported, defensive non-Promise
   return); **exit any held pointer lock when the sim phase leaves
@@ -1047,9 +1090,13 @@ Keep hot paths allocation-free (reuse buffers; I3).
   crosses a WARP→PLAYING transition** (per §13's "multi-level sim run", exercising
   warp + level advance in the golden);
   assert exact final `{hash, score, level, lives, superzapper, census}`;
-  self-consistency: two runs of same seed+script → identical per-tick hashes. Commit.
-  (Re-record golden only on intentional rule changes / reviewed engine upgrade; CI
-  pins Node — I2.)
+  self-consistency: two runs of same seed+script → identical per-tick hashes.
+- [ ] **SimEvent-emission coverage:** over the same scripted run, assert the emitted
+  event stream contains each expected `SimEvent` type at its trigger (playerShot,
+  enemyShot, enemyKilled, playerDied, flip, superzap, spikeHit, pulseTelegraph,
+  bonusLife, warpStart, uiMove/uiConfirm, highScoreJingle) — so audio/particles
+  consume a tested stream, not just sim state. Commit. (Re-record golden only on
+  intentional rule changes / reviewed engine upgrade; CI pins Node — I2.)
 
 ### Task 12.3: Hash-completeness test + benchMode census-hold test
 **Files:** `src/__tests__/hashCompleteness.test.ts`, `src/__tests__/benchMode.test.ts`.
