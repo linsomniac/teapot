@@ -284,3 +284,53 @@ Unbounded mouse deltas could cross ≥ 2 lanes in one tick, tunneling through
 symmetric rim contact, electrified lanes, and warp spikes (all sampled per tick
 via the player-lane rule). A 0.45 lanes/tick clamp (~27 lanes/s — still double
 keyboard speed) makes lane skipping impossible while keeping mouse control fast.
+
+## D39. Mid-well flips are partly random (flipSeekBias); refines D28 (review round 5)
+
+Review proved that *fully* player-seeking flips (D28) enable lane camping: every
+climbing enemy funnels single-file into a stationary hold-fire player's own
+lane and dies at range, so the player never has to move. Fix without losing the
+original's menace: each mid-well flip seeks the player with probability
+`flipSeekBias` (0.5) and otherwise steps to a random adjacent lane, so a share
+of enemies reach the rim on *other* lanes and must be chased — clearing a wave
+now requires rotating. The value is gated by the §13 anti-camping test. Rim-flip
+chasing stays fully player-seeking (a rim enemy always pursues).
+
+## D40. fireInterval raised to 0.18 s with an extent-aware constraint; refines D29 (review round 5)
+
+D29's recorded rationale (fireInterval > flipAnimTime/2) was arithmetically
+wrong: it ignored the §6.7 collision half-extents, which widen the rim-flip-
+landing kill window by ~(enemy+shot extents)/shotSpeed + a tick, so at 0.15 s a
+hold-fire stream auto-killed essentially every landing and the anti-camping test
+could not honestly pass. The constraint is corrected to
+fireInterval > flipAnimTime/2 + (enemyHalfExtent+shotHalfExtent)/shotSpeed +
+one tick ≈ 0.162 s, and fireInterval is set to 0.18 s. The §9 descent-fairness
+invariant still holds (trim rate 0.44 > descent 0.4 depth/s) and is re-verified
+by its simulated §13 test.
+
+## D41. The sim is constructed from an injected config, not direct module imports (review round 5)
+
+To make the frozen-parameter golden replay implementable without a later
+refactor, `sim/`'s entry point takes the full sim-affecting tuning surface
+(§8.2 anchors, §8.3 constants, §7 scores, geometry) plus a seed as an injected
+configuration. The app passes the live data modules; tests pass a frozen
+snapshot. Also lets the test suite inject modified values to verify wiring
+without asserting spec-canon numbers.
+
+## D42. One menu-mouse exception: a TITLE click confirms (start); refines D37 (review round 5)
+
+The title text promised "click to start" while D37 said the mouse plays no role
+in menus — a contradiction. Resolved by a single explicit carve-out: in TITLE
+only, a canvas click maps to confirm (→ LEVEL_SELECT), never requests pointer
+lock, is consumed, and doubles as the AudioContext-unlock gesture. All other
+menu clicks do nothing.
+
+## D43. Multi-tick input apportionment: drain the mouse accumulator per tick, carry the remainder (review round 5)
+
+When one rAF frame steps several sim ticks (or zero), each tick gets its own
+snapshot: mouse movement accrues into a pending accumulator between frames and
+is drained at most the per-tick clamp per tick with the remainder carried
+forward (0-tick frames just accrue). This preserves total mouse movement, keeps
+the per-tick speed cap honest regardless of refresh rate or hitches, and never
+reuses a snapshot across ticks — so the golden replay's snapshot stream is
+well-defined.
