@@ -129,3 +129,77 @@ implementation-defined across engines).
 Matches the original's 16-sector webs, removes the spec's earlier "≈14–16,
 ≥12" wobble, and makes lane math, difficulty tuning, and geometry authoring
 uniform (closed = 16 rim vertices, open = 17).
+
+## D19. PAUSED is an app-layer overlay, not a sim state (review round 2)
+
+Options: (a) app-layer pause (stop calling tick(); sim frozen), or (b) add
+pause signals to the input snapshot and keep PAUSED in the sim state machine.
+Chose (a): it keeps the determinism/replay contract clean (replays are
+pause-agnostic), matches "auto-pause stops the accumulator", and moves
+browser-event plumbing (blur/visibility/pointer-lock) out of the pure sim.
+The §13 state-machine test covers the sim-owned diagram only.
+
+## D20. Level-clear bonus capped at the level-96 anchor (review round 2)
+
+With difficulty flat past level 96 but the 100 × level bonus unbounded,
+bonus-life income eventually exceeds one life per wave and endgame runs would
+end by fatigue, not skill. Bonus = 100 × min(level, 96).
+
+## D21. Fuseball scoring is depth-banded 250/500/750 (review round 2)
+
+The original's proximity risk/reward on its scariest enemy is a gameplay
+structure, not point-table trivia; a flat 250 makes "kill it ASAP at long
+range" strictly optimal. Bands: kill at depth > 2/3 → 250, 1/3–2/3 → 500,
+< 1/3 (near the rim) → 750.
+
+## D22. Text is canvas-drawn stroke lettering; no font files (review round 2)
+
+A bundled font is filled glyphs (conflicting with the all-line-art visual
+identity), needs async load handling, and adds a licensing check. A
+Hershey/Vectrex-style stroke-segment data module keeps everything line art and
+zero-asset.
+
+## D23. Superzapper on an empty well consumes the use (review round 2)
+
+Simplest deterministic rule; punishes panic misuse mildly; avoids "is the well
+empty *this tick*" edge-case disputes in tests. Also: Superzapper input is
+accepted only during PLAYING.
+
+## D24. Rim contact is symmetric; rim flips run at 0.5 × FlipInt (review round 2)
+
+As previously written, a player could stand on a resting rim Flipper's lane
+unharmed and kill it point-blank risk-free, inverting the rim chase's tension
+(and contradicting Fuseball contact semantics). Now: sharing a lane with any
+rim-resident lethal enemy kills, whoever moved; the mid-flip save survives via
+the flip-occupancy rule. Rim flips are faster than mid-well flips so the chase
+stays threatening.
+
+## D25. Fuseball rim residency is temporary (review round 2)
+
+A permanent rim Fuseball was effectively unkillable (shooting it requires
+occupying the lane that kills you), stalled wave completion indefinitely, and
+cornered players on open wells. It now crawls the rim for fuseballRimTime,
+then descends and resumes climbing — original-like wandering, and the §6 tick
+order (shots resolve before contact) makes the in-lane kill fair.
+
+## D26. Deterministic spawn and fire schedulers (review round 2)
+
+FireInt as a bare "mean" and unspecified spawn type/lane selection were
+untestable and non-deterministic. Now: per-enemy next-shot delay uniform in
+[0.5, 1.5] × FireInt (suppressed attempts redraw); spawn type drawn weighted by
+remaining budget, lane uniform — all via the sim RNG.
+
+## D27. Pulses are lethal for their full duration; no flips during telegraph (review round 2)
+
+Instant-only lethality let players walk through visibly electrified lanes, and
+a Pulsar flipping mid-telegraph could kill with almost no warning (late-game:
+7 Pulsars × 3 lanes ≥ 16 lanes = unavoidable deaths). Flips freeze from
+telegraph start through pulse end; the electrified lane kills for the whole
+pulseDuration, including players entering mid-pulse.
+
+## D28. Mid-well flips seek the player (review round 2)
+
+Flip direction during the climb was unspecified. Chose player-seeking (shortest
+arc at flip start, ties clockwise, no flip when already on the player's lane) —
+matches the original's menace and is deterministic; a random walk would make
+early levels aimless and is harder to reason about in tests.
