@@ -130,7 +130,8 @@ scoring/economy →3.3/12.5 · Superzapper →5.4 · death/respawn →5.3 · Fli
 Tanker →4.2 · Spiker →4.3 · Fuseball →4.4 · Pulsar →4.5 · player firing →3.2 ·
 anti-camping →12.5 · warp/fairness →5.2 · state machine →3.1/6.2 · UI nav →6.1 ·
 persistence →7.1 · storage-throwing adapter →11.1 · input mapping →10.1 ·
-hash/replay →12.1/12.2/12.3 · lint rules →12.4 · maxLevelReached →3.1/5.1/5.2 ·
+hash/replay →12.1/12.2/12.3 · benchMode census-hold →12.3 · lint rules →12.4 ·
+maxLevelReached →3.1 (beginLevel) + 5.2 (warp entry) ·
 rim interpolation/teleport prev=curr →1.4 (interpRim) + 4.7/5.1/5.2 (teleport sets) ·
 beginLevel (level init) →3.1 (produced) + 5.2 (reused) ·
 manual browser-integration + per-SFX + visual + smoke + bench →13.1.

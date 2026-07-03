@@ -61,6 +61,13 @@ names a concrete number (e.g. Fuseball bands 250/500/750), read it as "the value
 the injected config," and prefer asserting the relationship (band boundaries at 1/3,
 2/3) over the literal.
 
+**Test config assembly.** Phase 3+ tests instantiate the sim with a base
+`GameConfig`. Build it from the live data modules via a small shared helper
+`src/__tests__/fixtures/liveConfig.ts` (`makeLiveConfig(): GameConfig` bundling
+`GEOMETRIES`, `DIFFICULTY`, `TUNING`, `SCORING`); wiring tests clone it and modify a
+field. This is distinct from the **frozen** snapshot in Task 12.2, which is a
+checked-in copy used only for exact-value golden assertions.
+
 **Determinism discipline.** Any new gameplay randomness draws from `sim` RNG. Any new
 sim state field that affects a later tick must be added to the state hash (§12.2) —
 the hash-completeness test (Task 12.3) will fail otherwise.
@@ -277,19 +284,29 @@ export function makeRng(seed: number): Rng {
 ```ts
 export interface Vec2 { x: number; y: number; }
 export interface Geometry { index: number; closed: boolean; rim: Vec2[]; vanishing: Vec2; }
-export interface DifficultyAnchor { level: number; flip: number; tank: number;
-  spik: number; fuse: number; puls: number; maxOnWell: number; climb: number;
-  flipInt: number; fireInt: number; maxShots: number; eshot: number;
+// Per-type budget fields use the full EnemyKind names so they line up 1:1 with
+// SimState.budget (Record<EnemyKind>) and pointsForKill — no abbreviation mapping.
+export interface DifficultyAnchor { level: number;
+  flipper: number; tanker: number; spiker: number; fuseball: number; pulsar: number;
+  maxOnWell: number; climb: number; flipInt: number; fireInt: number;
+  maxShots: number; eshot: number;
   spikeH: number | null; pulse: number | null; spawnInt: number; }  // §8.2 columns;
   // spikeH/pulse are null for the "—" cells (before the enemy's intro level);
   // paramsForLevel (Task 2.3) normalizes null to the column's first defined value.
-export interface Tuning { /* every §8.3 timing/geometry constant, named:
-  rimSpeed, mouseSensitivity, perTickClamp, shotSpeed, fireInterval, maxPlayerShots,
-  flipAnimTime, rimFlipFactor (=0.5), climbMul (per kind), fuseballRimSpeed,
-  fuseballRimTime, fuseballJitter (=[0.3,1.5], redraw 0.5), pulseDuration,
-  pulseTelegraph, pulsarReversalDepth, minFireDepth, spikeTrimDepth (=0.08),
-  descentSpeed, halfExtents {enemy,shot,spikeTop,blaster}, startingLives,
-  getReadyDuration, gameOverBeat, flipSeekBias, uiStepInterval */ }
+export interface Tuning {   // every §8.3 constant, concrete
+  rimSpeed: number; mouseSensitivity: number; perTickClamp: number;
+  shotSpeed: number; fireInterval: number; maxPlayerShots: number;
+  flipAnimTime: number; rimFlipFactor: number;               // 0.5 (rimFlipInterval = ·flipInt)
+  climbMul: Record<EnemyKind, number>;
+  fuseballRimSpeed: number; fuseballRimTime: number;
+  fuseballJitter: { min: number; max: number; redrawInterval: number };  // 0.3,1.5,0.5
+  fuseballDescentRange: { min: number; max: number };        // 0.6, 1.0
+  pulseDuration: number; pulseTelegraph: number; pulsarReversalDepth: number;
+  minFireDepth: number; spikeTrimDepth: number;              // 0.08 (depth per trim)
+  descentSpeed: number;
+  halfExtents: { enemy: number; shot: number; spikeTop: number; blaster: number };
+  startingLives: number; getReadyDuration: number; gameOverBeat: number;
+  flipSeekBias: number; uiStepInterval: number; }
 export interface Scoring { flipper: number; tanker: number; spiker: number;
   fuseballBands: [number, number, number]; pulsar: number; enemyShot: number;
   spikeTrimPoints: number;            // POINTS per trim (=1); distinct from
@@ -385,9 +402,12 @@ export function laneWidthAtRim(g: Geometry, vp: Viewport): number;  // min px, f
   `geometry.validate.test.ts` — min projected rim lane width ≥ 24 px at 1440×1080
   for all 16 geometries (uses `laneWidthAtRim`, now available). Iterate any failing
   geometry's vertices until it passes.
-- [ ] Implement as linear interpolation between the rim polygon (depth 0) and the
-  rim scaled toward `vanishing` (depth 1); lane center = midpoint of rim vertices
-  `i, i+1`. Commit.
+- [ ] Implement as linear interpolation between the rim polygon (depth 0) and a
+  far rim (depth 1) = each rim vertex scaled toward the vanishing point by a fixed
+  `FAR_SCALE = 0.15` (the far ring is 15% size, not a full collapse to a point, so
+  the 16 depth-1 spawn points stay separable); `vanishing` is an offset in playfield
+  pixels from the playfield center (so `vanishingPoint = center + g.vanishing`); lane
+  center = midpoint of rim vertices `i, i+1`. Commit.
 
 ---
 
@@ -433,7 +453,7 @@ export function sweptOverlap(prevA: number, currA: number, extA: number,
 **Interfaces (Produces):**
 ```ts
 export interface LevelParams {   // one resolved value per §8.2 column
-  flip: number; tank: number; spik: number; fuse: number; puls: number;  // budgets
+  flipper: number; tanker: number; spiker: number; fuseball: number; pulsar: number; // budgets
   maxOnWell: number; climb: number; flipInt: number; fireInt: number;
   maxShots: number; eshot: number; spikeH: number; pulse: number; spawnInt: number;
 }
@@ -509,8 +529,10 @@ export function transition(s: SimState, input: InputSnapshot, cfg: GameConfig,
 export function beginLevel(s: SimState, level: number, cfg: GameConfig): void;
 // Optional debug entry for the bench (Task 11.3): construct a Sim around a
 // caller-supplied full SimState and a benchMode flag; when benchMode is set the
-// death/despawn/wave-completion steps are suppressed (census-hold, §12.6). No
-// normal code path uses it, so it doesn't affect determinism of real play.
+// death/despawn/wave-completion steps are suppressed (census-hold, §12.6).
+// benchMode is held in the Sim's closure (NOT a SimState field, so it is never
+// hashed) and passed as an argument into the step functions that consult it; it is
+// always false on the real play path, so it doesn't affect real-play determinism.
 export function createSimFromState(state: SimState, config: GameConfig,
                                    benchMode: boolean): Sim;
 ```
@@ -525,6 +547,9 @@ export function createSimFromState(state: SimState, config: GameConfig,
 export type HsEntry = { initials: string; score: number; level: number };
 export function qualifies(scores: HsEntry[], score: number): boolean; // §10: <10 entries or ≥ 10th
 export function insertScore(scores: HsEntry[], e: HsEntry): HsEntry[];  // rank new above equal, keep top-10
+// The ordered 37-char entry set (§10). SimState.hsInitials holds an index into it
+// per slot; on confirm, indices map to chars to build HsEntry.initials.
+export const HS_CHARSET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';  // space first
 ```
   Task 7.1 (`persist/`) **reuses** these (it does not redefine them). `HsEntry`
   is the shared row shape used by `SimState.highScores`, `InitialSave`, and
@@ -580,12 +605,16 @@ export function levelClearBonus(level: number, sc: Scoring): number;   // 100*mi
 export function applyScore(s: SimState, points: number, cfg: GameConfig,
                            playerDiedThisTick: boolean, events: SimEvent[]): void; // bonus-life rule §6/§7
 ```
-- [ ] **Test (§13 scoring area):** each kind's points; fuseball bands 250/500/750 by
-  kill depth; zero-point Tanker rim self-split; clear bonus and its level-96 cap;
-  bonus-life rule = grant `floor(score/interval) − livesGranted`; a threshold crossed
-  by the clear bonus grants a life; a threshold crossed by kill points on a tick the
-  player also died nets zero; **a single score gain that crosses two thresholds at
-  once grants two lives** (guards a naive one-life-per-update implementation).
+- [ ] **Test (§13 scoring area):** each kind's points; fuseball bands by kill depth
+  with **pinned boundaries** — `depth < 1/3 → 750`, `1/3 ≤ depth ≤ 2/3 → 500`,
+  `depth > 2/3 → 250` (assert exactly at 1/3 and 2/3); zero-point Tanker rim
+  self-split; clear bonus and its level-96 cap; bonus-life rule = grant
+  `floor(score/interval) − livesGranted`; a threshold crossed by the clear bonus
+  grants a life; a threshold crossed by kill points on a tick the player also died
+  nets zero — asserted by checking the life count is unchanged **both on the death
+  tick and on the following tick** (so a deferred-grant impl can't sneak the life in
+  later); **a single score gain crossing two thresholds at once grants two lives**
+  (guards a naive one-life-per-update impl).
 - [ ] Implement. Commit.
 
 ---
@@ -655,13 +684,18 @@ export function updateSpiker(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   shot at the tip with Spiker at/above kills the Spiker, else trims once and is
   consumed; enemies below a spike top are shielded; spikes persist across death,
   cleared at level start; Spikers don't count toward MaxOnWell.
+- [ ] **Test (§7 spike-trim scoring):** a successful trim awards
+  `cfg.scoring.spikeTrimPoints` (1) and runs the normal bonus-life rule (§6 step 6);
+  a shot that kills the Spiker (tip priority) awards the Spiker's 50, not a trim
+  point.
 - [ ] Implement. Commit.
 
 ### Task 4.4: Fuseball
 
 **Files:** `src/sim/enemies/fuseball.ts`, tests.
 - [ ] **Test (§13 Fuseball area):** speed multiplier redrawn from [0.3,1.5] every
-  0.5 s; climbs, never changes lanes; rim residency = crawl toward player at
+  0.5 s; **descent target** drawn from `[0.6,1.0]`; band boundaries as in Task 3.3;
+  climbs, never changes lanes; rim residency = crawl toward player at
   `fuseballRimSpeed` shortest arc (open ends reverse) for `fuseballRimTime`, then
   descend at base speed (no jitter) to a random depth in [0.6,1.0], resume; symmetric
   rim contact lethal; depth-banded score on kill; removable only by shot/Superzapper.
@@ -728,8 +762,10 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 Task 3.1; this task wires wave completion → WARP and Task 5.2 calls `beginLevel` for
 the next level.)
 - [ ] **Test:** wave completes only in PLAYING, never on a death tick, when budget
-  exhausted AND no enemies remain; awards clear bonus (then bonus-life re-check, §6
-  step 8); PLAYING→WARP; enemy shots cancelled, spikes remain. (The end-to-end
+  exhausted AND no enemies remain; **a budget-exhausted wave with a never-despawning
+  Spiker or Pulsar still on the well does NOT complete until it is destroyed** (§6.3/
+  §6.5); awards clear bonus (then bonus-life re-check, §6 step 8); PLAYING→WARP;
+  enemy shots cancelled, spikes remain. (The end-to-end
   WARP→PLAYING → `beginLevel(next)` assertion lands in Task 5.2, which builds that
   edge.) Commit.
 
@@ -832,7 +868,9 @@ Keep hot paths allocation-free (reuse buffers; I3).
   wide low-alpha pass + thin bright core; degradation flag drops the wide pass
   (§11.1). Stroke-segment font module (D22) — no font files — authoring the full
   glyph set the UI uses: `A`–`Z`, `0`–`9`, space, and the on-screen punctuation
-  (`×` for the clear bonus, `.`, `:`, `-`, `!`). Commit.
+  (`×` for the clear bonus, `.`, `,`, `:`, `-`, `!`). Scores render as plain digit
+  runs with no thousands separators (keeps the glyph set small); the comma is only
+  for any incidental UI copy. Commit.
 
 ### Task 8.2: Well + player-lane highlight + interpolation
 - [ ] Draw the well via `project` (§11.1); highlight the rounded `playerLane`; draw
@@ -940,18 +978,26 @@ Keep hot paths allocation-free (reuse buffers; I3).
 
 ### Task 12.2: Golden replay + self-consistency
 **Files:** `src/__tests__/fixtures/frozenConfig.ts`, `src/__tests__/replay.test.ts`.
-- [ ] Frozen `GameConfig` snapshot; scripted input sequence that **reaches at least
-  level 17** so the run exercises all five enemy types incl. Fuseballs (11+) and
-  Pulsars (17+) — the hardest determinism cases (RNG-driven jitter, pulse clock);
+- [ ] Frozen `GameConfig` snapshot; the run **starts at level 17** — inject
+  `initialSave.maxLevelReached = 17` and script LEVEL_SELECT to pick 17 (§8.5), so
+  the very first wave exercises all five enemy types incl. Fuseballs (11+) and
+  Pulsars (17+) — the hardest determinism cases (RNG jitter, pulse clock) — without
+  scripting a 17-level clear;
   assert exact final `{hash, score, level, lives, superzapper, census}`;
   self-consistency: two runs of same seed+script → identical per-tick hashes. Commit.
   (Re-record golden only on intentional rule changes / reviewed engine upgrade; CI
   pins Node — I2.)
 
-### Task 12.3: Hash-completeness test
-**Files:** `src/__tests__/hashCompleteness.test.ts`.
+### Task 12.3: Hash-completeness test + benchMode census-hold test
+**Files:** `src/__tests__/hashCompleteness.test.ts`, `src/__tests__/benchMode.test.ts`.
 - [ ] Mutate each state category (entity field, timer, RNG state, score, budget, pulse
-  clock, phase) and assert the hash changes — guards against an omitted field. Commit.
+  clock, phase) and assert the hash changes — guards against an omitted field.
+- [ ] **benchMode census-hold test:** build a `SimState` with a lethal condition (a
+  pulse on the player's lane) and 24 enemies, wrap with
+  `createSimFromState(state, cfg, true)`, tick several times; assert lives never
+  decrease, no GET_READY transition occurs, and the enemy count stays at its pinned
+  value (the census-hold the perf gate depends on — §12.6). A `benchMode:false`
+  control confirms the player would otherwise die. Commit.
 
 ### Task 12.4: Verify the sim-purity + engine-stability lint rules fire
 The rules themselves were activated in Task 0.1 and have guarded sim code all along.
