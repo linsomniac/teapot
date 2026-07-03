@@ -37,7 +37,7 @@ medium+ addressed → box checked → commit.
 - [ ] 2.3 Difficulty interpolation (anchors, `—` cells, budgets gating, flat tail,
   monotonicity, pulse guard) (§8.1).
 
-## Phase 3 — Entities & combat
+## Phase 3 — Sim entities & combat
 - [ ] 3.1 `SimState` + `createSim` + state-machine skeleton + first transitions (§10).
 - [ ] 3.2 Player movement + firing + shots (8-cap, fireInterval, auto-fire, despawn,
   clear-on-transition) (§5).
@@ -83,8 +83,8 @@ medium+ addressed → box checked → commit.
 ## Phase 8 — Rendering (verified by §15 checklist + smoke pass, not unit tests)
 - [ ] 8.1 Canvas/viewport/DPR-2/letterbox + additive glow + stroke font (§11.1/D22).
 - [ ] 8.2 Well + player-lane highlight + fractional claw + tween/teleport (§11.1).
-- [ ] 8.3 Per-type enemy silhouettes/colors + dimmed band + flip rotation + particles
-  (§11.1/D35).
+- [ ] 8.3 Per-type enemy silhouettes/colors + dimmed band + flip rotation + distinct
+  player/enemy shots + Superzapper full-screen FX + particles (§11.1/D35).
 - [ ] 8.4 HUD + all screens + AVOID-SPIKES flash + warp zoom (§10/§11.1).
 
 ## Phase 9 — Audio
@@ -132,6 +132,7 @@ anti-camping →12.5 · warp/fairness →5.2 · state machine →3.1/6.2 · UI n
 persistence →7.1 · storage-throwing adapter →11.1 · input mapping →10.1 ·
 hash/replay →12.1/12.2/12.3 · benchMode census-hold →12.3 · lint rules →12.4 ·
 maxLevelReached →3.1 (beginLevel) + 5.2 (warp entry) ·
-rim interpolation/teleport prev=curr →1.4 (interpRim) + 4.7/5.1/5.2 (teleport sets) ·
+rim interpolation/teleport prev=curr →1.4 (interpRim) + 4.3 (Spiker lane-switch) +
+4.7/5.1/5.2 (teleport sets) ·
 beginLevel (level init) →3.1 (produced) + 5.2 (reused) ·
 manual browser-integration + per-SFX + visual + smoke + bench →13.1.

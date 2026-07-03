@@ -406,8 +406,11 @@ export function laneWidthAtRim(g: Geometry, vp: Viewport): number;  // min px, f
   far rim (depth 1) = each rim vertex scaled toward the vanishing point by a fixed
   `FAR_SCALE = 0.15` (the far ring is 15% size, not a full collapse to a point, so
   the 16 depth-1 spawn points stay separable); `vanishing` is an offset in playfield
-  pixels from the playfield center (so `vanishingPoint = center + g.vanishing`); lane
-  center = midpoint of rim vertices `i, i+1`. Commit.
+  pixels from the playfield center (so `vanishingPoint = center + g.vanishing`); a
+  lane center (integer lane `i`) = midpoint of rim vertices `i, i+1`; a **fractional**
+  lane (for the claw at `rimPos`) samples the rim polyline at vertex index
+  `rimPos + 0.5` (linear between the two nearest vertices, wrapping on closed wells),
+  so the claw position is deterministic. Commit.
 
 ---
 
@@ -460,8 +463,10 @@ export interface LevelParams {   // one resolved value per §8.2 column
 export function paramsForLevel(level: number, anchors: DifficultyAnchor[]): LevelParams; // §8.1
 ```
 - [ ] **Test (§13 spawner/difficulty area):** exact anchor values at anchor levels;
-  linear interpolation at a between-level (e.g. level 6); integer columns round
-  half-up; `null` (`—`) cells (spikeH<4, pulse<17) normalized to the column's first
+  linear interpolation at a between-level (e.g. level 6); the **integer columns**
+  (`flipper, tanker, spiker, fuseball, pulsar, maxOnWell, maxShots`) round half-up
+  while the rest stay fractional; `null` (`—`) cells (spikeH<4, pulse<17) normalized
+  to the column's first
   defined value; budgets 0 before introduction level; flat tail (levels 200 and 500
   == level-96 row); **monotonic difficulty** every step
   (budgets/maxOnWell/climb/maxShots/eshot/spikeH non-decreasing;
@@ -557,11 +562,13 @@ export const HS_CHARSET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';  // space fir
 - [ ] **Test (§13 state-machine area) — build incrementally as later tasks add
   states:** start in TITLE; TITLE→LEVEL_SELECT on confirm; LEVEL_SELECT→TITLE on
   back; LEVEL_SELECT→PLAYING on confirm sets `maxLevelReached=max(old,level)` and
-  seeds level-select bounds from `initialSave.maxLevelReached`;
-  GAME_OVER→HIGH_SCORE_ENTRY vs TITLE decided by `qualifies(state.highScores, score)`;
-  HIGH_SCORE_ENTRY→TITLE on confirm calls `insertScore` into `state.highScores`.
-  (WARP/GET_READY/quit edges added in Tasks 5.x/6.x.) Assert **no** undeclared
-  transition fires.
+  seeds level-select bounds from `initialSave.maxLevelReached`; GAME_OVER **holds
+  until `beatTimer` (gameOverBeat) elapses**, then goes to HIGH_SCORE_ENTRY if
+  `qualifies(state.highScores, score)` (emitting the `highScoreJingle` event on that
+  edge) else to TITLE; HIGH_SCORE_ENTRY→TITLE fires only after the full 3-initial
+  confirm (the slot-by-slot entry loop itself is Task 6.1) and calls `insertScore`
+  into `state.highScores`. (WARP/GET_READY/quit edges added in Tasks 5.x/6.x.) Assert
+  **no** undeclared transition fires.
 - [ ] **Test (§10 qualification, §13 persistence area):** `qualifies`/`insertScore`
   — <10 entries always qualify; ≥ 10th qualifies; a new entry ranks **above** an
   existing equal score; the table truncates to 10.
@@ -571,7 +578,11 @@ export const HS_CHARSET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';  // space fir
   sets `maxLevelReached=max(old,level)` (§8.5). LEVEL_SELECT→PLAYING calls it for the
   first level; Task 5.2 reuses it for subsequent levels.
 - [ ] Implement the tick pipeline skeleton (the §6 tick-order steps as ordered
-  function calls, most no-ops until their tasks land). Commit.
+  function calls, most no-ops until their tasks land). **Note:** entering PLAYING
+  from *any* predecessor (LEVEL_SELECT, WARP, or GET_READY) resets `spawnTimer` to
+  `SpawnInt` and restarts `pulseClock` (§6/§6.5) — this is a PLAYING-entry step
+  distinct from the per-level `beginLevel` reset (so GET_READY→PLAYING re-entry also
+  restarts them). Commit.
 
 ### Task 3.2: Player movement + firing + shots
 
@@ -683,7 +694,8 @@ export function updateSpiker(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   top (a trim while the Spiker is resident below the top persists — never reverted);
   shot at the tip with Spiker at/above kills the Spiker, else trims once and is
   consumed; enemies below a spike top are shielded; spikes persist across death,
-  cleared at level start; Spikers don't count toward MaxOnWell.
+  cleared at level start; Spikers don't count toward MaxOnWell; **the instantaneous
+  bottom lane-switch sets `prevLane=currLane` (teleport-no-tween, §11.1)**.
 - [ ] **Test (§7 spike-trim scoring):** a successful trim awards
   `cfg.scoring.spikeTrimPoints` (1) and runs the normal bonus-life rule (§6 step 6);
   a shot that kills the Spiker (tip priority) awards the Spiker's 50, not a trim
@@ -865,7 +877,8 @@ Keep hot paths allocation-free (reuse buffers; I3).
 **Files:** `src/render/canvas.ts`, `glow.ts`, `font.ts`.
 - [ ] Full-viewport canvas, letterboxed 4:3, DPR-2-capped backing store (§11.1).
 - [ ] `glow(ctx, strokePath, color)`: additive (`globalCompositeOperation='lighter'`)
-  wide low-alpha pass + thin bright core; degradation flag drops the wide pass
+  wide low-alpha pass + thin bright core; a degradation flag (a **config/URL constant,
+  e.g. `?lowglow=1` — not an auto-adaptive per-frame watchdog**) drops the wide pass
   (§11.1). Stroke-segment font module (D22) — no font files — authoring the full
   glyph set the UI uses: `A`–`Z`, `0`–`9`, space, and the on-screen punctuation
   (`×` for the clear bonus, `.`, `,`, `:`, `-`, `!`). Scores render as plain digit
@@ -944,7 +957,9 @@ Keep hot paths allocation-free (reuse buffers; I3).
 - [ ] App-layer pause overlay (P/Escape, auto-pause on blur/visibility/pointer-lock
   exit only in PLAYING/GET_READY/WARP; ignored elsewhere; no sim time leak); resume
   (P or click); Quit-to-title (Q → `input.quit`) (§10, D19). Seed from
-  `Date.now()`⊕`crypto` at game start (§12.3). Commit.
+  `Date.now()`⊕`crypto` at game start (§12.3). **At startup, initialize the audio
+  mute state from the persisted `settings.muted`** (via the storage adapter, Task
+  11.1) — mirroring the persist-back — so a game left muted starts muted. Commit.
 
 ### Task 11.3: Bench mode + frame-time overlay
 **Files:** `src/app/bench.ts`.
