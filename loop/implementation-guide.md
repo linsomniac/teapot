@@ -308,9 +308,10 @@ export interface Tuning {   // every §8.3 constant, concrete
   halfExtents: { enemy: number; shot: number; spikeTop: number; blaster: number };
   startingLives: number; getReadyDuration: number; gameOverBeat: number;
   flipSeekBias: number; uiStepInterval: number;
-  particlePoolCap: number; }   // render-side max live particles (bench census, §12.6)
+  particlePoolCap: number; }   // render-side max live particles, e.g. 256 (bench census, §12.6)
 export interface Scoring { flipper: number; tanker: number; spiker: number;
-  fuseballBands: [number, number, number]; pulsar: number; enemyShot: number;
+  fuseballBands: [number, number, number]; // by kill depth [far >2/3, mid 1/3–2/3, near <1/3] = [250,500,750]
+  pulsar: number; enemyShot: number;
   spikeTrimPoints: number;            // POINTS per trim (=1); distinct from
                                       // tuning.spikeTrimDepth (=0.08 depth)
   superzap: number; clearBonusPerLevel: number; clearBonusCapLevel: number;
@@ -368,9 +369,10 @@ export function paletteIndexForLevel(level: number): number;   // floor((level-1
   4.7/5.1/5.2.)
 - [ ] **Test (the §13 level-mapping area, and §15 criterion 2):**
   `geometryIndexForLevel` and `paletteIndexForLevel` across levels 1–112 including
-  every 16-level boundary (e.g. level 16→0/blue, 17→0/red, 96→15/magenta,
-  97→0/blue). `geometryIndexForLevel` maps 0–7→closed, 8–15→open (cross-checked in
-  Task 1.5).
+  every 16-level boundary (e.g. level 16 → geometry 15, palette 0/blue; level 17 →
+  geometry 0, palette 1/red; level 96 → geometry 15, palette 5/magenta; level 97 →
+  geometry 0, palette 0/blue). `geometryIndexForLevel` maps 0–7→closed, 8–15→open
+  (cross-checked in Task 1.5).
 - [ ] Implement. Commit.
 
 ### Task 1.5: Well geometry data + structural validation (no projection)
@@ -439,10 +441,11 @@ export const MAX_ACCUM_MS = 250;
 export function advance(accumMs: number, elapsedMs: number):
   { ticks: number; accumMs: number; alpha: number };   // §12.3
 ```
-- [ ] **Test (§13 stepper area):** 16.7 ms → 1 tick; 8 ms twice → 0 then 1 tick;
-  a 40 ms frame → 2 ticks; a 5000 ms frame clamps to `MAX_ACCUM_MS` (≤ 15 ticks);
-  `alpha` ∈ [0,1); leftover accumulator carries; a pause is modeled by the caller
-  not calling `advance` (no internal time). Commit after green.
+- [ ] **Test (§13 stepper area):** 16.7 ms → 1 tick; 8 ms three times → 0, 0, then
+  1 tick (accumulator crosses 16.67 ms only on the third); a 40 ms frame → 2 ticks
+  (leftover ~6.67 ms carries); a 5000 ms frame clamps to `MAX_ACCUM_MS` (15 ticks);
+  `alpha` ∈ [0,1); a pause is modeled by the caller not calling `advance` (no
+  internal time). Commit after green.
 
 ### Task 2.2: Swept collision
 
@@ -580,10 +583,11 @@ export const HS_CHARSET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';  // space fir
   seeds level-select bounds from `initialSave.maxLevelReached`; GAME_OVER **holds
   until `beatTimer` (gameOverBeat) elapses**, then goes to HIGH_SCORE_ENTRY if
   `qualifies(state.highScores, score)` (emitting the `highScoreJingle` event on that
-  edge) else to TITLE; HIGH_SCORE_ENTRY→TITLE fires only after the full 3-initial
-  confirm (the slot-by-slot entry loop itself is Task 6.1) and calls `insertScore`
-  into `state.highScores`. (WARP/GET_READY/quit edges added in Tasks 5.x/6.x.) Assert
-  **no** undeclared transition fires.
+  edge) else to TITLE. For HIGH_SCORE_ENTRY→TITLE, here assert only that **the edge
+  exists** — given an already-completed entry, the transition calls `insertScore`
+  into `state.highScores` and lands in TITLE; the slot-by-slot 3-confirm counting
+  that drives it is built and tested in Task 6.1. (WARP/GET_READY/quit edges added in
+  Tasks 5.x/6.x.) Assert **no** undeclared transition fires.
 - [ ] Create `src/__tests__/fixtures/liveConfig.ts` — `makeLiveConfig(): GameConfig`
   bundling the live `GEOMETRIES`/`DIFFICULTY`/`TUNING`/`SCORING` (all authored by end
   of Phase 1). Every Phase 3+ test builds its config from it (Conventions).
@@ -618,12 +622,18 @@ export function advanceShots(shots: Shot[], speed: number, dir: 1 | -1): void; /
   (keyboard delta), clamps on open wells; fire spawns a shot at `playerLane`,
   depth = 0 in PLAY / warpDepth in WARP; ≤ 8 shots in flight; `fireCooldown`
   enforces one shot per `fireInterval`; hold-fire auto-fires at the cap; a shot
-  reaching depth 1 despawns; shots cleared on every state transition (§6). Also sets
-  `prevRimPos = rimPos` at the end of the tick (for interpolation). Note: the
+  reaching depth 1 despawns; shots cleared on every state transition (§6).
+  Interpolation snapshot: **at the start of each tick (before applying movement) set
+  `prevRimPos = rimPos` and `prevWarpDepth = warpDepth`**, then apply this tick's
+  movement — so prev is last tick's end and curr is this tick's end (entities do the
+  same with prevLane/prevDepth). Note: the
   **shot consumption / never-pierces** rule (§6) — a player shot is consumed by the
-  first thing it hits and cannot hit a second entity behind it — is asserted where
-  hits occur: enemy hit in Tasks 4.1–4.5, enemy-shot hit in Task 4.6, spike trim in
-  Task 4.3.
+  first thing it hits and cannot hit a second entity behind it — is implemented as a
+  **single per-shot resolution pass** in step 3 that picks the nearest-depth target
+  on the shot's lane (enemy, enemy shot, or spike tip) and consumes the shot; the
+  per-enemy tasks (4.1–4.6) plug their entities into that one pass rather than each
+  running independent hit logic. The two-stacked-enemies never-pierce case is
+  asserted in Task 4.1.
 - [ ] Implement in the tick pipeline (steps 1–2). Commit.
 
 ### Task 3.3: Scoring + bonus life
@@ -684,7 +694,9 @@ export function updateFlipper(e: Enemy, s: SimState, lp: LevelParams, cfg: GameC
 - [ ] **Test (§13 tick-order — same-tick rim-contact save):** a rim Flipper completing
   a flip onto the player's lane this tick, with a player shot positioned to kill it
   this tick; assert the player **survives** (step-3 kill before step-5 contact).
-- [ ] Implement. Commit.
+- [ ] **Test (§6 never-pierces, stacked enemies):** two Flippers on the same lane at
+  different depths; one player shot kills the nearer one and is consumed — the far
+  one survives this tick. Commit.
 
 ### Task 4.2: Tanker
 
@@ -779,7 +791,10 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 **Files:** `src/sim/spawner.ts`, tests.
 - [ ] **Test (§13 spawner area):** attempt every SpawnInt, first after PLAYING entry;
   spawn only if threatening on-well count < MaxOnWell (Spikers excluded) and budget
-  remains; type drawn weighted by remaining budget; lane uniform, except Spikers
+  remains; type drawn weighted by remaining budget (assert over many seeded draws
+  that the observed type distribution tracks the remaining-budget weights — e.g. a
+  budget of {flipper:9, tanker:1} yields ≈9:1, distinguishing weighted from uniform);
+  lane uniform, except Spikers
   exclude lanes already holding a Spiker (defer if none free); per-type budgets match
   the table initially. **A newly spawned enemy sets `prevLane=lane`,
   `prevDepth=depth`** (the teleport-no-tween convention, §11.1) — asserted here;
@@ -798,7 +813,8 @@ the next level.)
   exhausted AND no enemies remain; **a budget-exhausted wave with a never-despawning
   Spiker or Pulsar still on the well does NOT complete until it is destroyed** (§6.3/
   §6.5); awards clear bonus (then bonus-life re-check, §6 step 8); PLAYING→WARP;
-  enemy shots cancelled, spikes remain. (The end-to-end
+  **all in-flight shots cancelled (both player and enemy)**, spikes remain (§8.4).
+  (The end-to-end
   WARP→PLAYING → `beginLevel(next)` assertion lands in Task 5.2, which builds that
   edge.) Commit.
 
@@ -883,10 +899,11 @@ export function decode(raw: string | null): SaveData;   // validates, defaults
 // (Task 3.1, I14); persist re-exports them for the storage adapter's convenience:
 export { qualifies, insertScore } from '../sim/highscore';
 ```
-- [ ] **Test (§13 persistence area):** round-trip; `decode(null)`/corrupt
-  JSON/wrong-shape/unknown-fields → defaults (never throws); `maxLevelReached`
-  round-trip; a highScores array longer than 10 is truncated on decode. (The
-  qualification/tie/insertion behavior is tested in Task 3.1.) Commit.
+- [ ] **Test (§13 persistence area):** round-trip; `decode(null)`/corrupt JSON/
+  wrong-shape known data → **defaults** (never throws); **unknown extra fields are
+  ignored** while valid known fields still load (forward-compat, §12.4);
+  `maxLevelReached` round-trip; a highScores array longer than 10 is truncated on
+  decode. (The qualification/tie/insertion behavior is tested in Task 3.1.) Commit.
 
 ---
 
@@ -926,7 +943,10 @@ Keep hot paths allocation-free (reuse buffers; I3).
 ### Task 8.4: HUD + screens
 - [ ] HUD (score, high score, lives, Superzapper pips, level); title (logo, top-10,
   controls, reserved-key note, **mute indicator** §10), level-select, GET_READY,
-  game-over, high-score-entry, "AVOID SPIKES" warp flash, warp zoom. Commit.
+  game-over, high-score-entry, "AVOID SPIKES" warp flash. **Warp zoom:** during WARP,
+  scale the whole well toward the vanishing point as `warpDepth` advances 0→1 (the
+  rim shrinks into the screen) so the descent reads as flying down the tube (§11.1,
+  criterion 12(g)). Commit.
 
 ---
 
@@ -1033,11 +1053,13 @@ Keep hot paths allocation-free (reuse buffers; I3).
 
 ### Task 12.3: Hash-completeness test + benchMode census-hold test
 **Files:** `src/__tests__/hashCompleteness.test.ts`, `src/__tests__/benchMode.test.ts`.
-- [ ] Mutate each state category and assert the hash changes — guards against an
-  omitted field. Cover **all** future-affecting categories per §12.2: an entity
-  field (lane/depth/flip/timers), a `playerShots`/`enemyShots` entry, a `spikes`
-  entry, RNG state, score, `lives`, `livesGranted`, a `budget` value, `pulseClock`,
-  each timer (spawn/getReady/beat/fireCooldown), rimPos, superzapper, and `phase`.
+- [ ] Assert the hash changes when any future-affecting state changes. **Drive the
+  mutation set programmatically from the `SimState` field set** (and representative
+  entity/shot/spike fields) rather than a hand list, so a newly added field is
+  covered automatically — excluding only the render-only interpolation fields
+  (`prevRimPos`, `prevWarpDepth`, `prevLane`, `prevDepth`, `paletteIndex`, which the
+  renderer derives). This backstops the Task 12.1 manual audit and the
+  add-to-hash-as-you-go rule.
 - [ ] **benchMode census-hold test:** build a `SimState` with a lethal condition (a
   pulse on the player's lane) and 24 enemies, wrap with
   `createSimFromState(state, cfg, true)`, tick several times; assert lives never
@@ -1087,9 +1109,10 @@ notes in `loop/acceptance-results.md`. These are behaviors unit tests cannot rea
   keydown); blur/tab-hide auto-pauses; lock loss for any reason auto-pauses.
 - [ ] Auto-pause fires only in PLAYING/GET_READY/WARP and is ignored on menu /
   game-over screens.
-- [ ] The pointer lock is released when the game leaves PLAYING/GET_READY/WARP
-  (death → GAME_OVER, quit, wave → the transient before next PLAYING): the OS
-  cursor reappears and menu screens are mouse-inert (§5).
+- [ ] The pointer lock is retained across PLAYING↔WARP↔GET_READY (mouse still moves
+  and fires during the warp descent), and is released **only** when the game leaves
+  that set — GAME_OVER (death or quit) → title/high-score flow: the OS cursor
+  reappears and menu screens are mouse-inert (§5).
 - [ ] Click-to-resume re-requests the lock only if it was held at pause; P resumes
   on keyboard; the resume click does not fire; the pending mouse accumulator is
   cleared on pause and resume (no burst-spin).
