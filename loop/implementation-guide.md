@@ -50,6 +50,17 @@ Every task inherits these (copied verbatim from the spec):
 run it, see it fail for the right reason, implement minimally, run it green, commit.
 Every §13 test area maps to a task below; the mapping is in `loop/checklist.md`.
 
+**Test-value policy (spec §13).** Follow the spec's policy so the suite survives the
+playtest tuning §7/§8.2/§8.3 explicitly permit: structural and invariant tests
+(interpolation, gating, monotonicity, economy, fairness, anti-camping, tuning
+guards) run against the **live** data modules; behavior tests that involve a tunable
+number should verify **wiring** — inject a modified `GameConfig` and assert behavior
+changes — rather than hard-asserting a spec-canon number; exact-value assertions live
+only in the frozen-parameter golden replay (Task 12.2). Where a per-task test below
+names a concrete number (e.g. Fuseball bands 250/500/750), read it as "the value from
+the injected config," and prefer asserting the relationship (band boundaries at 1/3,
+2/3) over the literal.
+
 **Determinism discipline.** Any new gameplay randomness draws from `sim` RNG. Any new
 sim state field that affects a later tick must be added to the state hash (§12.2) —
 the hash-completeness test (Task 12.3) will fail otherwise.
@@ -302,6 +313,8 @@ export function playerLane(rimPos: number, closed: boolean): number;   // §4
 export function adjacentLane(lane: number, dir: 1 | -1, closed: boolean): number | null;
 export function shortestArcDir(from: number, to: number, closed: boolean): -1 | 0 | 1; // §4/§6.1
 export function clampRimDelta(delta: number, clamp: number): number;   // §4/§8.3
+export function interpRim(prev: number, curr: number, alpha: number, closed: boolean): number;
+  // render tween along the SHORTEST arc (mod 16 on closed wells); the renderer uses it (§11.1)
 // levels.ts (§4):
 export function geometryIndexForLevel(level: number): number;  // (level-1) mod 16
 export function paletteIndexForLevel(level: number): number;   // floor((level-1)/16) mod 6
@@ -310,7 +323,11 @@ export function paletteIndexForLevel(level: number): number;   // floor((level-1
   15↔0; open `clamp(round(rimPos),0,15)` and rimPos clamped to `[0,15]`; `round` =
   `floor(x+0.5)` (test x.5 rounds up); `adjacentLane` returns `null` at open ends,
   wraps closed; `shortestArcDir` ties break clockwise (toward increasing index);
-  `clampRimDelta` never exceeds the clamp (no lane skip at max delta).
+  `clampRimDelta` never exceeds the clamp (no lane skip at max delta); `interpRim`
+  tweens along the shortest arc incl. the closed-well wrap case (prev 15.5, curr 0.5
+  → passes through 0, not backward through 8). (The teleport `prev=curr` convention
+  itself is set by the sim on spawn/warp/level-start and asserted in those tasks —
+  4.7/5.1/5.2.)
 - [ ] **Test (the §13 level-mapping area, and §15 criterion 2):**
   `geometryIndexForLevel` and `paletteIndexForLevel` across levels 1–112 including
   every 16-level boundary (e.g. level 16→0/blue, 17→0/red, 96→15/magenta,
@@ -445,6 +462,7 @@ export interface SimState {
   budget: Record<EnemyKind, number>;    // remaining spawn budget (§6)
   superzapper: 0 | 1 | 2;               // EMPTY/PARTIAL/FULL (§5)
   spawnTimer: number; pulseClock: number; getReadyTimer: number; warpDepth: number;
+  beatTimer: number;                    // game-over beat countdown (§8.3/§10)
   fireCooldown: number; maxLevelReached: number;
   selector: number;                     // level-select / high-score cursor value
   selectorAccum: number;                // UI movement accumulator (§10, Task 6.1)
@@ -469,14 +487,27 @@ export function transition(s: SimState, input: InputSnapshot, cfg: GameConfig,
   extends `hashState` in the same commit** ("add to the hash as you go") — the
   hash-completeness test (Task 12.3) will fail if a field is missed. Wire
   `sim.hash()` to it.
+- [ ] Create `src/sim/highscore.ts` — the **sim-owned** pure predicate/insertion
+  (qualification is sim-owned, I14):
+```ts
+export type HsEntry = { initials: string; score: number; level: number };
+export function qualifies(scores: HsEntry[], score: number): boolean; // §10: <10 entries or ≥ 10th
+export function insertScore(scores: HsEntry[], e: HsEntry): HsEntry[];  // rank new above equal, keep top-10
+```
+  Task 7.1 (`persist/`) **reuses** these (it does not redefine them). `HsEntry`
+  is the shared row shape used by `SimState.highScores`, `InitialSave`, and
+  `SaveData`.
 - [ ] **Test (§13 state-machine area) — build incrementally as later tasks add
   states:** start in TITLE; TITLE→LEVEL_SELECT on confirm; LEVEL_SELECT→TITLE on
   back; LEVEL_SELECT→PLAYING on confirm sets `maxLevelReached=max(old,level)` and
   seeds level-select bounds from `initialSave.maxLevelReached`;
-  GAME_OVER→HIGH_SCORE_ENTRY vs TITLE decided by `qualifies(state.highScores, score)`
-  (Task 7.1's predicate); HIGH_SCORE_ENTRY→TITLE on confirm inserts the entry into
-  `state.highScores`. (WARP/GET_READY/quit edges added in Tasks 5.x/6.x.) Assert
-  **no** undeclared transition fires.
+  GAME_OVER→HIGH_SCORE_ENTRY vs TITLE decided by `qualifies(state.highScores, score)`;
+  HIGH_SCORE_ENTRY→TITLE on confirm calls `insertScore` into `state.highScores`.
+  (WARP/GET_READY/quit edges added in Tasks 5.x/6.x.) Assert **no** undeclared
+  transition fires.
+- [ ] **Test (§10 qualification, §13 persistence area):** `qualifies`/`insertScore`
+  — <10 entries always qualify; ≥ 10th qualifies; a new entry ranks **above** an
+  existing equal score; the table truncates to 10.
 - [ ] Implement the tick pipeline skeleton (the §6 tick-order steps as ordered
   function calls, most no-ops until their tasks land). Commit.
 
@@ -529,8 +560,8 @@ hash as you go.
 **Interfaces (Produces):**
 ```ts
 export function startFlip(e: Enemy, toLane: number): void;          // sets flip, freezes depth
-export function advanceFlip(e: Enemy, dtSec: number): boolean;      // returns true on completion
-export function chooseMidWellFlip(e: Enemy, playerLane: number, closed: boolean,
+export function advanceFlip(e: Enemy, dtSec: number, flipAnimTime: number): boolean; // true on completion
+export function chooseMidWellFlip(e: Enemy, playerLaneIdx: number, closed: boolean,
                                   seekBias: number, rng: Rng): number; // §6/§6.1
 export function updateFlipper(e: Enemy, s: SimState, lp: LevelParams, cfg: GameConfig): void;
 ```
@@ -541,6 +572,9 @@ export function updateFlipper(e: Enemy, s: SimState, lp: LevelParams, cfg: GameC
   collision only); rim arrival discards pending mid-well timer, first rim flip after
   `rimFlipInterval`; rim chase = shortest arc re-evaluated each flip; a completed rim
   flip onto the player lane is lethal, crossing a mid-flip enemy's lane is safe.
+- [ ] **Test (§13 tick-order — same-tick rim-contact save):** a rim Flipper completing
+  a flip onto the player's lane this tick, with a player shot positioned to kill it
+  this tick; assert the player **survives** (step-3 kill before step-5 contact).
 - [ ] Implement. Commit.
 
 ### Task 4.2: Tanker
@@ -550,7 +584,7 @@ export function updateFlipper(e: Enemy, s: SimState, lp: LevelParams, cfg: GameC
   shot/rim split → two Flippers created at the Tanker's depth, each starting a flip
   (progress 0) to opposite adjacent lanes, FlipInt from completion; end-lane split →
   both inward, staggered by `flipAnimTime/2`; splits ignore MaxOnWell; rim self-split
-  is non-lethal and scores 0; Superzapper kill does not split (Task 6.4).
+  is non-lethal and scores 0; Superzapper kill does not split (Task 5.4).
 - [ ] Implement. Commit.
 
 ### Task 4.3: Spiker + spikes
@@ -606,7 +640,8 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 
 ### Task 4.6: Enemy fire scheduler + enemy shots
 
-**Files:** extend `src/sim/enemies/shots.ts`, `src/sim/spawner.ts` shares RNG, tests.
+**Files:** extend `src/sim/enemies/shots.ts`, tests. (The shared sim RNG is on
+`SimState`; the spawner itself is Task 4.7.)
 - [ ] **Test (§13 enemy-fire area):** eligible kinds (flipper/tanker/pulsar) draw
   next-shot delay uniform [0.5,1.5]×FireInt; ineligible when depth<0.2, rim-resident,
   mid-flip, or MaxShots reached (suppressed → redraw); enemy shot crossing depth 0 on
@@ -707,16 +742,19 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 
 **Interfaces (Produces):**
 ```ts
-export interface SaveData { highScores: { initials: string; score: number; level: number }[];
+import type { HsEntry } from '../sim/highscore';
+export interface SaveData { highScores: HsEntry[];   // reuses the sim row shape
   settings: { muted: boolean }; maxLevelReached: number; }
 export function encode(d: SaveData): string;
 export function decode(raw: string | null): SaveData;   // validates, defaults
-export function qualifies(scores: SaveData['highScores'], score: number): boolean;
-export function insertScore(d: SaveData, e: SaveData['highScores'][number]): SaveData;
+// qualification/insertion are NOT redefined here — they live in sim/highscore.ts
+// (Task 3.1, I14); persist re-exports them for the storage adapter's convenience:
+export { qualifies, insertScore } from '../sim/highscore';
 ```
 - [ ] **Test (§13 persistence area):** round-trip; `decode(null)`/corrupt
   JSON/wrong-shape/unknown-fields → defaults (never throws); `maxLevelReached`
-  round-trip; qualification incl. ties and the ≤10 bound; top-10 truncation. Commit.
+  round-trip; a highScores array longer than 10 is truncated on decode. (The
+  qualification/tie/insertion behavior is tested in Task 3.1.) Commit.
 
 ---
 
@@ -806,9 +844,13 @@ Keep hot paths allocation-free (reuse buffers; I3).
 **Files:** `src/app/bench.ts`.
 - [ ] `?bench=1`: gesture-start, fixed 2880×2160 backing store, max-legal-load census
   (24 threatening + 7 Spikers + 16 full spikes + active pulse + 8+8 shots + saturated
-  particles), seeded+scripted 60 s; report mean & p95 (nearest-rank, drop frame 1)
-  **work time** + informational dropped-frame %/rAF stats as console JSON + on screen.
-  F3 frame-time overlay in normal play (§12.6). Commit.
+  particles). The census exceeds MaxOnWell, so the bench builds a `SimState`
+  **directly** (a debug constructor that places entities/spikes/shots into the state
+  arrays, bypassing the spawner's MaxOnWell gate) rather than playing up to it; it
+  then ticks the real sim + renderer for 60 s (seeded, scripted inputs). Report mean
+  & p95 (nearest-rank, drop frame 1) **work time** + informational dropped-frame
+  %/rAF stats as console JSON + on screen. F3 frame-time overlay in normal play
+  (§12.6). Commit.
 
 ---
 
