@@ -18,13 +18,18 @@ medium+ addressed → box checked → commit.
 ## Phase 1 — Sim foundations (pure, no DOM)
 - [ ] 1.1 Core types (`sim/types.ts`).
 - [ ] 1.2 Seedable RNG mulberry32 (`sim/rng.ts`) — same-seed determinism test.
-- [ ] 1.3 `GameConfig` types + `validateConfig` — tuning-constraint guards (§8.2/§8.3).
-- [ ] 1.4 16 well geometries + data-validation test (16 lanes, no self-intersection,
-  ≥24 px lanes; indices 0–7 closed, 8–15 open) (§4).
-- [ ] 1.5 Lane math + player-lane rule (round=floor(x+.5), wrap/clamp, shortest-arc,
-  per-tick clamp) (§4).
-- [ ] 1.6 Projection math (depth-0→rim, monotone toward vanishing, all 16) (§11.1).
-  **DoD (phase):** all §13 lane/projection/geometry/config test areas green.
+- [ ] 1.3 `GameConfig` types (spikeH/pulse `number|null` for `—` cells) +
+  `validateConfig` (anchor tuning-constraint guards) + author live data modules
+  (tuning/difficulty/scoring) (§8.2/§8.3/§7).
+- [ ] 1.4 Lane math + player-lane rule (round=floor(x+.5), wrap/clamp, shortest-arc,
+  per-tick clamp) **+ level→geometry/palette mapping** (`(N-1)mod16`,
+  `floor((N-1)/16)mod6` across levels 1–112) (§4).
+- [ ] 1.5 16 well geometries + **structural** validation (16 lanes, winding,
+  no self-intersection; 0–7 closed, 8–15 open — no projection) (§4).
+- [ ] 1.6 Projection math (depth-0→rim, monotone toward vanishing, all 16) **+
+  projected-lane-width geometry check (≥24 px)** (§11.1/§4).
+  **DoD (phase):** all §13 lane/level-mapping/projection/geometry/config test areas
+  green.
 
 ## Phase 2 — Sim core mechanics
 - [ ] 2.1 Fixed-timestep stepper (0/1/N ticks, 250 ms clamp, alpha, carry) (§12.3).
@@ -115,10 +120,14 @@ medium+ addressed → box checked → commit.
 ---
 
 ## §13 test-area → task index (traceability)
-lane math →1.5 · projection →1.6 · geometry validation →1.4 · config/tuning guards
-→1.3 · stepper →2.1 · collision →2.2 · difficulty/monotonicity →2.3 · spawner →4.7 ·
-enemy fire →4.6 · scoring/economy →3.3/12.5 · Superzapper →5.4 · death/respawn →5.3 ·
-Flipper →4.1 · Tanker →4.2 · Spiker →4.3 · Fuseball →4.4 · Pulsar →4.5 · player firing
-→3.2 · anti-camping →12.5 · warp/fairness →5.2 · state machine →3.1/6.2 · UI nav →6.1 ·
-persistence →7.1 · input mapping →10.1 · hash/replay →12.1/12.2/12.3 · lint rules
-→12.4 · manual + visual + smoke + bench →13.1.
+lane math →1.4 · level mapping (geometry/palette) →1.4 · geometry validation
+→1.5 (structural) + 1.6 (projected width) · projection →1.6 · config/tuning guards
+→1.3 (anchors) + 2.3 (interpolated table) · stepper →2.1 · collision →2.2 ·
+tick-order same-tick save →4.5 (pulse) + 4.6 (enemy shot) + 5.2 (warp trim) + 5.3
+(kill+death) · difficulty/monotonicity →2.3 · spawner →4.7 · enemy fire →4.6 ·
+scoring/economy →3.3/12.5 · Superzapper →5.4 · death/respawn →5.3 · Flipper →4.1 ·
+Tanker →4.2 · Spiker →4.3 · Fuseball →4.4 · Pulsar →4.5 · player firing →3.2 ·
+anti-camping →12.5 · warp/fairness →5.2 · state machine →3.1/6.2 · UI nav →6.1 ·
+persistence →7.1 · storage-throwing adapter →11.1 · input mapping →10.1 ·
+hash/replay →12.1/12.2/12.3 · lint rules →12.4 · maxLevelReached →3.1/5.1/5.2 ·
+manual + visual + smoke + bench →13.1.

@@ -152,8 +152,13 @@ teapot/
   `<script type="module" src="/src/main.ts">`. Relative asset paths so `dist/` is
   portable (§12.1).
 - [ ] `src/main.ts`: for now, get the canvas and fill it black (placeholder).
-- [ ] ESLint config with `@typescript-eslint`; add two `no-restricted-*` rules
-  scaffolded but scoped in later tasks (Task 12.4). Prettier wired.
+- [ ] ESLint config with `@typescript-eslint`, and **activate both purity rules now**
+  so they guard sim code from Phase 1 onward (Task 12.4 later adds a fixture proving
+  they fire): (a) `no-restricted-properties` forbidding `Math.sqrt/sin/cos/tan/atan2/
+  pow/exp/log` under `src/sim/**` except `src/sim/projection.ts`; (b)
+  `no-restricted-globals`/`no-restricted-properties` forbidding `window`, `document`,
+  `localStorage`, `performance`, `requestAnimationFrame`, `Math.random`, `Date` under
+  `src/sim/**`, `src/persist/**`, and `src/input/map.ts` (§12.2/§12.3). Prettier wired.
 - [ ] **Verify:** `npm run dev` serves a black page; `npm run build` emits static
   `dist/`; `npm run check` passes on the empty project (add one trivial passing
   test so `vitest run` exits 0).
@@ -201,7 +206,7 @@ export interface Shot { lane: number; depth: Depth; prevDepth: Depth; }
 export interface Spike { lane: number; topDepth: Depth; }  // occupies [topDepth,1]
 export type SimEvent =
   | { type: 'playerShot' } | { type: 'enemyShot' }
-  | { type: 'enemyKilled'; kind: EnemyKind; depth: Depth }
+  | { type: 'enemyKilled'; kind: EnemyKind; lane: number; depth: Depth }  // lane for death burst
   | { type: 'playerDied' } | { type: 'flip' } | { type: 'superzap' }
   | { type: 'spikeHit' } | { type: 'pulseTelegraph' } | { type: 'bonusLife' }
   | { type: 'warpStart' } | { type: 'uiMove' } | { type: 'uiConfirm' }
@@ -251,42 +256,43 @@ export interface Geometry { index: number; closed: boolean; rim: Vec2[]; vanishi
 export interface DifficultyAnchor { level: number; flip: number; tank: number;
   spik: number; fuse: number; puls: number; maxOnWell: number; climb: number;
   flipInt: number; fireInt: number; maxShots: number; eshot: number;
-  spikeH: number; pulse: number; spawnInt: number; }  // §8.2 columns
-export interface Tuning { /* every §8.3 constant, named */ }
+  spikeH: number | null; pulse: number | null; spawnInt: number; }  // §8.2 columns;
+  // spikeH/pulse are null for the "—" cells (before the enemy's intro level);
+  // paramsForLevel (Task 2.3) normalizes null to the column's first defined value.
+export interface Tuning { /* every §8.3 timing/geometry constant, named:
+  rimSpeed, mouseSensitivity, perTickClamp, shotSpeed, fireInterval, maxPlayerShots,
+  flipAnimTime, rimFlipFactor (=0.5), climbMul (per kind), fuseballRimSpeed,
+  fuseballRimTime, fuseballJitter (=[0.3,1.5], redraw 0.5), pulseDuration,
+  pulseTelegraph, pulsarReversalDepth, minFireDepth, spikeTrimDepth (=0.08),
+  descentSpeed, halfExtents {enemy,shot,spikeTop,blaster}, startingLives,
+  getReadyDuration, gameOverBeat, flipSeekBias, uiStepInterval */ }
 export interface Scoring { flipper: number; tanker: number; spiker: number;
   fuseballBands: [number, number, number]; pulsar: number; enemyShot: number;
-  spikeTrim: number; superzap: number; clearBonusPerLevel: number;
-  clearBonusCapLevel: number; bonusLifeInterval: number; }
+  spikeTrimPoints: number;            // POINTS per trim (=1); distinct from
+                                      // tuning.spikeTrimDepth (=0.08 depth)
+  superzap: number; clearBonusPerLevel: number; clearBonusCapLevel: number;
+  bonusLifeInterval: number; }        // economy constants live here only (no dup in Tuning)
 export interface GameConfig { geometries: Geometry[]; difficulty: DifficultyAnchor[];
   tuning: Tuning; scoring: Scoring; }
 export function validateConfig(c: GameConfig): void;  // throws on violation
 ```
 - [ ] **Test:** `validateConfig` accepts a well-formed config; rejects a config
   whose difficulty anchors aren't sorted by level, whose geometry count ≠ 16, or
-  whose tuning violates a stated §8.3 constraint (`fireInterval > flipAnimTime/2 +
-  extents/shotSpeed + tick`, `flipInt ≥ 2·flipAnimTime` at every anchor,
-  `perTickClamp < 0.5`, `pulse ≥ telegraph + pulseDuration`). This is the
-  §13 "tuning-constraint guards" area.
+  whose tuning violates a stated §8.3 constraint at any anchor
+  (`fireInterval > flipAnimTime/2 + extents/shotSpeed + tick`,
+  `flipInt ≥ 2·flipAnimTime`, `perTickClamp < 0.5`,
+  `pulse ≥ telegraph + pulseDuration`). This is part of the §13
+  "tuning-constraint guards" area (the *interpolated-table* guard is in Task 2.3).
 - [ ] Implement `validateConfig` from §8.2 column notes + §8.3 table. Commit.
+- [ ] **Author the live data modules** here or in the task that first consumes each
+  (per I4): `data/tuning.ts` (§8.3), `data/difficulty.ts` (§8.2 anchors, `—`→null),
+  `data/scoring.ts` (§7). `data/geometries.ts` is authored in Task 1.5. The frozen
+  test fixture (Task 12.2) snapshots all four.
 
-### Task 1.4: Well geometry data + validation test
+### Task 1.4: Lane math + player-lane rule + level→geometry/palette mapping
 
-**Files:** `src/sim/data/geometries.ts`, `src/sim/geometry.validate.test.ts`.
-
-- [ ] Author 16 `Geometry` entries (§4): indices 0–7 closed (circle, square,
-  plus/cross, triangle, pentagon, hexagon, hourglass/bowtie, diamond — 16 rim
-  vertices each), 8–15 open (flat line, V, wide valley, U, W, zig-zag, arc, L —
-  17 rim vertices each), each with a `vanishing` offset. Author winding so
-  increasing lane index reads clockwise / left-to-right (§4).
-- [ ] **Test (the §4 data-validation area):** for all 16 — exactly 16 lanes
-  (16/17 vertices per closed/open); no rim self-intersection (segment-pair cross
-  test); min projected rim lane width ≥ 24 px at 1440×1080 (uses Task 1.6
-  projection). Assert indices 0–7 `closed`, 8–15 open.
-- [ ] Implement geometries until the test passes (iterate vertex coords). Commit.
-
-### Task 1.5: Lane math + player-lane rule
-
-**Files:** `src/sim/well.ts`, `src/sim/well.test.ts`.
+**Files:** `src/sim/well.ts`, `src/sim/well.test.ts`, `src/sim/levels.ts`,
+`src/sim/levels.test.ts`.
 
 **Interfaces (Produces):**
 ```ts
@@ -296,17 +302,42 @@ export function playerLane(rimPos: number, closed: boolean): number;   // §4
 export function adjacentLane(lane: number, dir: 1 | -1, closed: boolean): number | null;
 export function shortestArcDir(from: number, to: number, closed: boolean): -1 | 0 | 1; // §4/§6.1
 export function clampRimDelta(delta: number, clamp: number): number;   // §4/§8.3
+// levels.ts (§4):
+export function geometryIndexForLevel(level: number): number;  // (level-1) mod 16
+export function paletteIndexForLevel(level: number): number;   // floor((level-1)/16) mod 6
 ```
 - [ ] **Test (the §13 lane-math area):** closed `round(rimPos) mod 16` incl. wrap at
   15↔0; open `clamp(round(rimPos),0,15)` and rimPos clamped to `[0,15]`; `round` =
   `floor(x+0.5)` (test x.5 rounds up); `adjacentLane` returns `null` at open ends,
   wraps closed; `shortestArcDir` ties break clockwise (toward increasing index);
   `clampRimDelta` never exceeds the clamp (no lane skip at max delta).
+- [ ] **Test (the §13 level-mapping area, and §15 criterion 2):**
+  `geometryIndexForLevel` and `paletteIndexForLevel` across levels 1–112 including
+  every 16-level boundary (e.g. level 16→0/blue, 17→0/red, 96→15/magenta,
+  97→0/blue). `geometryIndexForLevel` maps 0–7→closed, 8–15→open (cross-checked in
+  Task 1.5).
 - [ ] Implement. Commit.
 
-### Task 1.6: Projection math
+### Task 1.5: Well geometry data + structural validation (no projection)
 
-**Files:** `src/sim/projection.ts`, `src/sim/projection.test.ts`.
+**Files:** `src/sim/data/geometries.ts`, `src/sim/geometry.validate.test.ts`.
+
+- [ ] Author 16 `Geometry` entries (§4): indices 0–7 closed (circle, square,
+  plus/cross, triangle, pentagon, hexagon, hourglass/bowtie, diamond — 16 rim
+  vertices each), 8–15 open (flat line, V, wide valley, U, W, zig-zag, arc, L —
+  17 rim vertices each), each with a `vanishing` offset. Author winding so
+  increasing lane index reads clockwise / left-to-right (§4).
+- [ ] **Test (the §4 structural-validation area — no projection needed):** for all
+  16 — exactly 16 lanes (16/17 vertices per closed/open); no rim self-intersection
+  (segment-pair cross test); indices 0–7 `closed`, 8–15 open, matching
+  `geometryIndexForLevel` (Task 1.4). (The projected-lane-width check is added in
+  Task 1.6, once projection exists.)
+- [ ] Implement geometries until the test passes (iterate vertex coords). Commit.
+
+### Task 1.6: Projection math + projected-lane-width geometry check
+
+**Files:** `src/sim/projection.ts`, `src/sim/projection.test.ts`; extend
+`src/sim/geometry.validate.test.ts`.
 (This is the one `sim/` module allowed transcendentals; its outputs never feed sim
 state — §12.3.)
 
@@ -319,6 +350,10 @@ export function laneWidthAtRim(g: Geometry, vp: Viewport): number;  // min px, f
 - [ ] **Test (§13 projection area):** depth 0 maps a lane center onto the rim
   polyline; increasing depth moves toward the vanishing point (monotone); holds for
   all 16 geometries; `project` is pure (same inputs → same output).
+- [ ] **Test (completes the §4 geometry-validation area):** extend
+  `geometry.validate.test.ts` — min projected rim lane width ≥ 24 px at 1440×1080
+  for all 16 geometries (uses `laneWidthAtRim`, now available). Iterate any failing
+  geometry's vertices until it passes.
 - [ ] Implement as linear interpolation between the rim polygon (depth 0) and the
   rim scaled toward `vanishing` (depth 1); lane center = midpoint of rim vertices
   `i, i+1`. Commit.
@@ -371,11 +406,17 @@ export function paramsForLevel(level: number, anchors: DifficultyAnchor[]): Leve
 ```
 - [ ] **Test (§13 spawner/difficulty area):** exact anchor values at anchor levels;
   linear interpolation at a between-level (e.g. level 6); integer columns round
-  half-up; `—` cells (spikeH<4, pulse<17) treated as first defined value; budgets 0
-  before introduction level; flat tail (levels 200 and 500 == level-96 row);
-  **monotonic difficulty** every step (budgets/maxOnWell/climb/maxShots/eshot/spikeH
-  non-decreasing; flipInt/fireInt/pulse/spawnInt non-increasing); the
-  `pulse ≥ telegraph+pulseDuration` guard holds across all levels.
+  half-up; `null` (`—`) cells (spikeH<4, pulse<17) normalized to the column's first
+  defined value; budgets 0 before introduction level; flat tail (levels 200 and 500
+  == level-96 row); **monotonic difficulty** every step
+  (budgets/maxOnWell/climb/maxShots/eshot/spikeH non-decreasing;
+  flipInt/fireInt/pulse/spawnInt non-increasing).
+- [ ] **Test (completes the §13 tuning-constraint guards — interpolated table):**
+  for every level 1..200 the resolved `LevelParams` satisfy `flipInt ≥
+  2·flipAnimTime`, `rimFlipInterval (=0.5·flipInt) ≥ flipAnimTime`, and
+  `pulse ≥ telegraph + pulseDuration` — so an interpolated (not just anchor) row
+  can never violate a constraint. (Task 1.3 guarded the anchors; this guards the
+  curve between them.)
 - [ ] Implement. Commit.
 
 ---
@@ -384,10 +425,18 @@ export function paramsForLevel(level: number, anchors: DifficultyAnchor[]): Leve
 
 ### Task 3.1: SimState shape + createSim skeleton + state machine
 
-**Files:** `src/sim/state.ts`, `src/sim/sim.ts`, tests alongside.
+**Files:** `src/sim/state.ts`, `src/sim/sim.ts`, `src/sim/hash.ts`, tests alongside.
 
 **Interfaces (Produces):**
 ```ts
+// Read-only snapshot the app provides from persist/ so the sim can decide
+// level-select bounds (§8.5) and high-score qualification (§10) WITHOUT reading
+// localStorage itself (the sim stays pure — §12.2). The app persists the sim's
+// updated highScores/maxLevelReached back after the game (Task 11.1/11.2).
+export interface InitialSave {
+  maxLevelReached: number;
+  highScores: { initials: string; score: number; level: number }[];  // sorted desc, ≤10
+}
 export interface SimState {
   phase: Phase; level: number; score: number; lives: number;
   livesGranted: number;                 // for bonus-life accounting (§7)
@@ -397,8 +446,11 @@ export interface SimState {
   superzapper: 0 | 1 | 2;               // EMPTY/PARTIAL/FULL (§5)
   spawnTimer: number; pulseClock: number; getReadyTimer: number; warpDepth: number;
   fireCooldown: number; maxLevelReached: number;
-  selector: number;                     // level-select / high-score cursor
-  hsInitials: number[]; hsSlot: number; // high-score entry (§10)
+  selector: number;                     // level-select / high-score cursor value
+  selectorAccum: number;                // UI movement accumulator (§10, Task 6.1)
+  selectorTimer: number;                // UI step-rate limiter (§10, Task 6.1)
+  hsInitials: number[]; hsSlot: number; // high-score entry in progress (§10)
+  highScores: InitialSave['highScores'];// in-session table (seeded from InitialSave)
   rng: Rng;
 }
 export interface Sim {
@@ -406,17 +458,25 @@ export interface Sim {
   getState(): Readonly<SimState>;
   hash(): number;
 }
-export function createSim(config: GameConfig, seed: number): Sim;
+// initialSave defaults to { maxLevelReached: 1, highScores: [] } when omitted.
+export function createSim(config: GameConfig, seed: number, initialSave?: InitialSave): Sim;
 // pure transition helper, unit-tested directly (§10):
 export function transition(s: SimState, input: InputSnapshot, cfg: GameConfig,
                            events: SimEvent[]): void;
 ```
+- [ ] Create `src/sim/hash.ts` now with `hashState(s: SimState): number` covering
+  the fields defined so far. **Every later task that adds a future-affecting field
+  extends `hashState` in the same commit** ("add to the hash as you go") — the
+  hash-completeness test (Task 12.3) will fail if a field is missed. Wire
+  `sim.hash()` to it.
 - [ ] **Test (§13 state-machine area) — build incrementally as later tasks add
   states:** start in TITLE; TITLE→LEVEL_SELECT on confirm; LEVEL_SELECT→TITLE on
-  back; LEVEL_SELECT→PLAYING on confirm sets `maxLevelReached=max(old,level)`;
-  GAME_OVER→HIGH_SCORE_ENTRY vs TITLE per qualification; HIGH_SCORE_ENTRY→TITLE on
-  confirm. (WARP/GET_READY/quit edges added in Tasks 6.x.) Assert **no** undeclared
-  transition fires.
+  back; LEVEL_SELECT→PLAYING on confirm sets `maxLevelReached=max(old,level)` and
+  seeds level-select bounds from `initialSave.maxLevelReached`;
+  GAME_OVER→HIGH_SCORE_ENTRY vs TITLE decided by `qualifies(state.highScores, score)`
+  (Task 7.1's predicate); HIGH_SCORE_ENTRY→TITLE on confirm inserts the entry into
+  `state.highScores`. (WARP/GET_READY/quit edges added in Tasks 5.x/6.x.) Assert
+  **no** undeclared transition fires.
 - [ ] Implement the tick pipeline skeleton (the §6 tick-order steps as ordered
   function calls, most no-ops until their tasks land). Commit.
 
@@ -539,6 +599,9 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   deferred flip releases at pulse end; a lane is lethal for the whole pulse (entering
   mid-pulse kills); de-electrifies the instant the last participating Pulsar on it
   dies; shots pass through pulses; fires shots subject to min-firing-depth.
+- [ ] **Test (§13 tick-order — same-tick pulse save):** a Pulsar pulsing on the
+  player's lane, with a player shot positioned to destroy it this tick; assert the
+  player **survives** (step-3 kill de-electrifies before step-5 pulse lethality).
 - [ ] Implement. Commit.
 
 ### Task 4.6: Enemy fire scheduler + enemy shots
@@ -548,7 +611,11 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   next-shot delay uniform [0.5,1.5]×FireInt; ineligible when depth<0.2, rim-resident,
   mid-flip, or MaxShots reached (suppressed → redraw); enemy shot crossing depth 0 on
   the player lane kills, elsewhere despawns at rim; player shot destroys enemy shot
-  (0 points). Commit.
+  (0 points).
+- [ ] **Test (§13 tick-order — same-tick enemy-shot save):** an enemy shot about to
+  cross depth 0 on the player's lane, with a player shot positioned to intercept it
+  this tick; assert the player **survives** (step-3 shot-vs-shot resolves before
+  step-4 rim lethality). Commit.
 
 ### Task 4.7: Spawner
 
@@ -565,9 +632,13 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 
 ### Task 5.1: Wave completion + level advance
 
+**Files:** `src/sim/state.ts` (advance logic), tests.
 - [ ] **Test:** wave completes only in PLAYING, never on a death tick, when budget
   exhausted AND no enemies remain; awards clear bonus (then bonus-life re-check, §6
-  step 8); PLAYING→WARP; enemy shots cancelled, spikes remain. Commit.
+  step 8); PLAYING→WARP; enemy shots cancelled, spikes remain. On the next PLAYING
+  entry: level increments, geometry/palette recompute (Task 1.4 helpers),
+  Superzapper resets to FULL, spikes cleared, rim position resets to lane 8 center
+  (§5), and `maxLevelReached = max(old, newLevel)` (§8.5). Commit.
 
 ### Task 5.2: Warp descent + fairness
 
@@ -576,11 +647,17 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
   shots trim spikes; fire cooldown reset at WARP entry; spike collision (point
   Blaster, §6.7) kills → life lost, level still complete, descent not replayed,
   WARP→PLAYING (lives remain) or WARP→GAME_OVER (last life); level banner is
-  render-only. **Descent-fairness invariant test:** simulate the actual descent on a
+  render-only. **maxLevelReached (§8.5):** it updates on the WARP→PLAYING entry for
+  the next level, and does **not** update if a warp spike-death ends the game
+  (WARP→GAME_OVER) before that entry. **Same-tick trim-save (§13 tick-order):** a
+  spike the Blaster would hit this tick, with a scripted shot that trims it to safety
+  the same tick; assert the Blaster **survives** (step-3 trim before step-5 warp
+  lethality). **Descent-fairness invariant test:** simulate the actual descent on a
   max-`SpikeH` spike with scripted hold-fire; assert no spike collision. Commit.
 
 ### Task 5.3: GET_READY + death/respawn
 
+**Files:** `src/sim/state.ts` (death/GET_READY logic), tests.
 - [ ] **Test (§13 death/respawn area):** a lethal event in PLAYING → GET_READY (if
   lives remain) after decrement; on-well enemies returned to budget by type (split
   Flippers → Flipper budget, may exceed authored); shots cleared; spikes/score/rim
@@ -604,6 +681,7 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 
 ### Task 6.1: Title / level-select / high-score-entry navigation
 
+**Files:** `src/sim/state.ts` (UI-navigation transitions), tests.
 - [ ] **Test (§13 UI-navigation area):** selector step = 1 per ±1.0 accumulated
   lanes, ≤ 1 per UI-step interval, accumulator reset on emit and cleared on
   zero-cross/state entry (held-then-release emits no backlog); level-select opens at
@@ -614,6 +692,7 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 
 ### Task 6.2: Quit-to-title + full transition set
 
+**Files:** `src/sim/state.ts`, `src/sim/state.test.ts`.
 - [ ] **Test:** `input.quit` forces GAME_OVER from PLAYING, GET_READY, or WARP;
   final state-machine test asserts **every** §10 transition (incl. GET_READY↔,
   both WARP exits, all quit edges) and **no others**. Commit.
@@ -668,8 +747,8 @@ Keep hot paths allocation-free (reuse buffers; I3).
 
 ### Task 8.4: HUD + screens
 - [ ] HUD (score, high score, lives, Superzapper pips, level); title (logo, top-10,
-  controls, reserved-key note), level-select, GET_READY, game-over, high-score-entry,
-  "AVOID SPIKES" warp flash, warp zoom. Commit.
+  controls, reserved-key note, **mute indicator** §10), level-select, GET_READY,
+  game-over, high-score-entry, "AVOID SPIKES" warp flash, warp zoom. Commit.
 
 ---
 
@@ -706,8 +785,13 @@ Keep hot paths allocation-free (reuse buffers; I3).
 ## Phase 11 — App wiring
 
 ### Task 11.1: Storage adapter
-**Files:** `src/app/storage.ts` — localStorage read/write around `persist/`, graceful
-degradation on private-mode/quota (§12.4). Commit.
+**Files:** `src/app/storage.ts`, `src/app/storage.test.ts`.
+- [ ] localStorage read/write around `persist/` `encode`/`decode`; builds the
+  `InitialSave` the sim consumes (Task 3.1) and persists the sim's final
+  `highScores`/`maxLevelReached`/`muted` back. **Test:** a mocked `localStorage`
+  whose `getItem`/`setItem` **throw** (private-mode/quota) degrades gracefully — the
+  adapter returns defaults / silently no-ops, never throwing (§12.4 "storage-throwing
+  adapter"). Commit.
 
 ### Task 11.2: Game loop + pause overlay
 **Files:** `src/app/loop.ts`, `src/app/pause.ts`, `src/app/app.ts`, `src/main.ts`.
@@ -730,11 +814,13 @@ degradation on private-mode/quota (§12.4). Commit.
 
 ## Phase 12 — Integration, determinism, lint gates
 
-### Task 12.1: State hash
-**Files:** `src/sim/hash.ts`, wired into `sim.ts`.
-- [ ] Hash every future-affecting field (§12.2 list: entity kind/lane/depth/flip/
-  timers, shots, spikes, RNG state, pulse clock, score, lives, budgets, phase,
-  timers). Commit.
+### Task 12.1: State-hash audit
+**Files:** `src/sim/hash.ts` (created in Task 3.1 and extended per task).
+- [ ] Audit `hashState` against the final `SimState` and every entity/shot/spike
+  field: confirm it hashes every future-affecting field (§12.2 list: entity
+  kind/lane/depth/flip/timers, shots, spikes, RNG state, pulse clock, score, lives,
+  livesGranted, budgets, phase, all timers, selector state). Add any missed field.
+  (Task 12.3's completeness test is the automated backstop.) Commit.
 
 ### Task 12.2: Golden replay + self-consistency
 **Files:** `src/__tests__/fixtures/frozenConfig.ts`, `src/__tests__/replay.test.ts`.
@@ -748,12 +834,12 @@ degradation on private-mode/quota (§12.4). Commit.
 - [ ] Mutate each state category (entity field, timer, RNG state, score, budget, pulse
   clock, phase) and assert the hash changes — guards against an omitted field. Commit.
 
-### Task 12.4: ESLint sim-purity + engine-stability rules
-- [ ] `no-restricted-properties` forbidding `Math.sqrt/sin/cos/tan/atan2/pow/exp/log`
-  in `sim/` except `projection.ts`; `no-restricted-globals` forbidding browser/DOM
-  globals + `Math.random`/`Date` in `sim/`, `persist/`, `input/map.ts`. Add a
-  deliberately-violating fixture in a scratch file to confirm the rule fires, then
-  remove it. `npm run lint` green. Commit.
+### Task 12.4: Verify the sim-purity + engine-stability lint rules fire
+The rules themselves were activated in Task 0.1 and have guarded sim code all along.
+- [ ] Add a deliberately-violating fixture (e.g. `Math.sqrt` in a sim file, and a
+  `window` reference in a persist file) in a scratch branch/file, confirm
+  `npm run lint` **fails** on each, then remove the fixtures. Confirm `npm run lint`
+  is green on the real tree. Commit (the removal + a note documenting the check).
 
 ### Task 12.5: Anti-camping + economy invariant tests
 **Files:** `src/__tests__/antiCamping.test.ts`, `economyInvariant.test.ts`.
@@ -784,9 +870,11 @@ degradation on private-mode/quota (§12.4). Commit.
 
 ## Spec-coverage map (self-review)
 
-Every spec section maps to a task: §4 well/lanes → 1.4/1.5/1.6; §5 player →
-3.2/5.3/5.4; §6 enemies/tick-order/collision → 2.2/4.x; §7 scoring → 3.3; §8
-difficulty → 1.3/2.3/4.7/5.1; §9 warp → 5.2; §10 states/screens → 3.1/6.x; §11
-render/audio → 8.x/9.x; §12.2 architecture → file structure + all sim tasks; §12.3
-loop/determinism → 2.1/10.1/11.2/12.1–12.3; §12.4 persistence → 7.1/11.1; §12.6 bench
-→ 11.3; §13 tests → the test area cited in each task; §15 acceptance → 13.1.
+Every spec section maps to a task: §4 well/lanes/mapping → 1.4/1.5/1.6; §5 player →
+3.2/5.1/5.3/5.4; §6 enemies/tick-order/collision → 2.2/4.x/5.2/5.3; §7 scoring →
+3.3/12.5; §8 difficulty/starting-level → 1.3/2.3/3.1/4.7/5.1/5.2; §9 warp → 5.2; §10
+states/screens → 3.1/6.x; §11 render/audio → 8.x/9.x; §12.2 architecture → file
+structure + all sim tasks; §12.3 loop/determinism → 2.1/3.1/10.1/11.2/12.1–12.4;
+§12.4 persistence → 7.1/11.1; §12.6 bench → 11.3; §13 tests → the test area cited in
+each task (and the checklist traceability map); §15 acceptance → 13.1. Save-data
+injection (`InitialSave`) crosses 3.1 (consume) ↔ 7.1/11.1 (produce/persist).

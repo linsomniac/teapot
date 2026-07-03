@@ -90,6 +90,30 @@ Per the writing-plans skill and the build prompt (`loop/prompt-3-build`): each
 task ends with passing tests and a commit. The checklist item is checked off in
 the same commit that completes it.
 
+## I14. Save data is injected into `createSim` as `InitialSave` (impl-review round 1)
+
+The sim must decide level-select bounds (§8.5) and high-score qualification (§10)
+from persisted data, but may not read `localStorage` (purity, §12.2). So
+`createSim(config, seed, initialSave?)` takes a read-only `{ maxLevelReached,
+highScores }`; the sim owns the in-session table and the app persists its final
+state back (Tasks 3.1 / 11.1). Keeps the sim pure and the qualification transition
+sim-owned.
+
+## I15. `—` difficulty cells are `number | null` (impl-review round 1)
+
+`DifficultyAnchor.spikeH` and `.pulse` are `number | null`; `null` encodes the
+spec's `—` cells, normalized by `paramsForLevel` to the column's first defined
+value (§8.1). Avoids implementers diverging on `undefined`/`NaN`/prefilled numbers.
+
+## I16. Lint purity rules active from Phase 1; hash module created in Phase 3 (impl-review round 1)
+
+The sim-purity/engine-stability ESLint rules are turned on in Task 0.1 (not deferred
+to Phase 12) so they guard sim code as it is written; Task 12.4 only proves they
+fire. The state-hash module is created in Task 3.1 (when `SimState` exists) and
+extended by each later task ("add to the hash as you go"), so that instruction
+refers to a module that exists; Task 12.1 audits it and Task 12.3 is the automated
+completeness backstop.
+
 ## I13. `codex-review` after each task during build
 
 The build prompt (`loop/prompt-3-build`) asks for codex + internal review of each
