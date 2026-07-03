@@ -1,6 +1,6 @@
 # Specification — "Teapot": a browser-based game inspired by Tempest
 
-Status: revised draft, review round 6
+Status: revised draft, review round 7
 Anchor: `loop/description` — "build a browser-based game inspired by the arcade game
 Tempest". Decisions and rationale: `loop/spec-decisions`. Rejected review concerns:
 `loop/spec-rejected-concerns.md`.
@@ -48,16 +48,20 @@ Non-goals and `loop/spec-decisions`).
   in a loop; the player can rotate continuously) or **open** (17 rim vertices; the
   rim has two ends and movement stops at the end lanes).
 - **16 well geometries**, one per level, cycling every 16 levels: geometry index =
-  `(N−1) mod 16` for level N. The authored set is 8 closed — circle, square, plus,
-  hourglass/bowtie, star, clover, heart, gear — and 8 open — flat line, V, wide
-  valley, U, W, steps, wave, L. (Final shapes are the implementer's choice within
-  this section's constraints; the hourglass narrows at the waist but does not
-  cross itself.) Vertex data is authored as static data in one module, each
-  geometry carrying its own **vanishing-point offset** (per-geometry, so the set
-  covers endless levels). A §13 data-validation test enforces: exactly 16 lanes
-  (16 or 17 rim vertices as above); a non-self-intersecting rim (no two rim
-  segments cross); and a minimum projected lane width of 24 px at the rim at the
-  reference playfield size of 1440×1080.
+  `(N−1) mod 16` for level N. **Geometry indices 0–7 are the 8 closed wells and
+  8–15 the 8 open wells** (so this mapping is deterministic and every 16-level
+  block has a closed run then an open run). The indicative closed set is circle,
+  square, plus/cross, triangle, pentagon, hexagon, hourglass/bowtie, diamond;
+  the open set is flat line, V, wide valley, U, W, zig-zag, arc, L. (Final shapes
+  are the implementer's choice provided each passes validation below; deep-spike
+  shapes like sharp stars are avoided because they produce thin lanes. The
+  hourglass narrows at the waist but does not cross itself.) Vertex data is
+  authored as static data in one module, each geometry carrying its own
+  **vanishing-point offset** (per-geometry, so the set covers endless levels). A
+  §13 data-validation test enforces: exactly 16 lanes (16 or 17 rim vertices as
+  above); a non-self-intersecting rim (no two rim segments cross); and a minimum
+  projected lane width of 24 px at the rim at the reference playfield size of
+  1440×1080.
 - **Winding convention:** geometry data is authored with a consistent winding such
   that increasing lane index reads clockwise on screen for closed wells and
   left-to-right for open wells. Wherever this spec says "clockwise", it means
@@ -71,13 +75,15 @@ Non-goals and `loop/spec-decisions`).
 - **Coordinates:** an entity's position is `(lane, depth)` with depth ∈ [0, 1],
   0 = rim (player end), 1 = well bottom (spawn end).
 - **Player-lane rule (canonical):** the player's rim position is continuous
-  (fractional), but the player always occupies **exactly one lane**:
-  `playerLane = round(rimPos) mod 16` on closed wells, `clamp(round(rimPos), 0, 15)`
-  on open wells. Firing, enemy-shot lethality, rim contact (Flipper and Fuseball),
-  Pulsar lane kills, and warp spike collision all use this single rule. To keep
-  lane crossings detectable by per-tick sampling, the input layer clamps the
-  per-tick rim-movement delta below 0.5 lanes (§8.3) — no input can skip a lane
-  between ticks.
+  (fractional), but the player always occupies **exactly one lane**. `round`
+  means `floor(x + 0.5)` (half rounds up, deterministic). On closed wells
+  `rimPos` is normalized to `[0, 16)` each tick and `playerLane = round(rimPos)
+  mod 16`; on open wells `playerLane = clamp(round(rimPos), 0, 15)`. Firing,
+  enemy-shot lethality, rim contact (Flipper and Fuseball), Pulsar lane kills,
+  and warp spike collision all use this single rule. To keep lane crossings
+  detectable by per-tick sampling, the input layer clamps the per-tick
+  rim-movement delta below 0.5 lanes (§8.3) — no input can skip a lane between
+  ticks.
 
 ## 5. The player (Blaster)
 
@@ -106,13 +112,15 @@ Non-goals and `loop/spec-decisions`).
   Chromium's ~1.25 s post-Escape cooldown), the game stays paused and shows a
   hint. Keyboard control is always available regardless of lock state. Held
   mouse buttons register only from their next mousedown after a consumed click.
+  The pending mouse-delta accumulator (§12.2) is cleared on pause and on resume,
+  so movement events during a pause never burst-spin the player on resume.
 - **Firing:** space / left mouse button (when pointer-locked). Shots spawn at the
   player's current depth (0 during play; the Blaster's current depth during warp)
   on the player's lane and travel down it at `shotSpeed`. Maximum **8 player
   shots** in flight; firing is capped at one shot per `fireInterval` (0.18 s —
   longer than a flip's landing window *plus* the rim collision reach, so a
   point-blank rim save needs an aimed shot rather than falling out of auto-fire;
-  see D29 and the §8.3 constraint). Holding fire auto-fires at that cap. A shot
+  see D40 and the §8.3 constraint). Holding fire auto-fires at that cap. A shot
   that reaches the well bottom (depth 1) without hitting anything despawns.
 - **Superzapper:** the player has **two uses per level**, forming a state machine
   `FULL(2) → PARTIAL(1) → EMPTY(0)` shown as HUD pips:
@@ -166,8 +174,11 @@ come from the difficulty model (§8). Global combat rules:
   GET_READY). If the count of **threatening** on-well enemies (all types except
   Spikers — D32) is below `MaxOnWell` and budget remains, one enemy spawns: its
   type is drawn from the types with remaining budget, weighted by remaining
-  count, and its lane is drawn uniformly from the 16 lanes — both via the sim
-  RNG. Tanker splits ignore `MaxOnWell` (it gates spawns only).
+  count, and its lane is drawn uniformly via the sim RNG — from all 16 lanes,
+  except a Spiker's lane is drawn only from lanes not already holding a Spiker
+  (at most one Spiker per lane, §6.3); if every lane already has a Spiker, the
+  Spiker spawn is deferred to the next attempt. Tanker splits ignore
+  `MaxOnWell` (it gates spawns only).
 - **Enemy firing:** Flippers, Tankers, and Pulsars fire. Each eligible enemy
   independently draws its next-shot delay uniformly from `[0.5, 1.5] × FireInt`
   via the sim RNG (drawn on spawn and after each shot or suppressed attempt).
@@ -195,7 +206,7 @@ come from the difficulty model (§8). Global combat rules:
   funnel every climbing enemy single-file into a stationary hold-fire player's
   own lane, where they die at range — making lane-camping a dominant strategy;
   the random fraction sends a share of enemies to the rim on other lanes, so
-  clearing a wave requires rotating (D28, D29). Rim-flip chasing (§6.1) stays
+  clearing a wave requires rotating (D39). Rim-flip chasing (§6.1) stays
   fully shortest-arc — a rim enemy always pursues.
 - **Shot consumption:** a player shot is consumed by the first thing it hits —
   enemy, enemy shot, or spike trim. It never pierces. All shots (both sides)
@@ -238,9 +249,9 @@ come from the difficulty model (§8). Global combat rules:
   begin rim behavior; their landing flips are ordinary rim flips for lethality).
   The Tanker itself is never lethal — reaching the rim on the player's lane just
   splits, and a rim self-split awards no points (points require a shot kill).
-  In an end lane of an open well, both released Flippers flip in the single
-  available direction, staggered by half a flip. Superzapper destruction does
-  not split (§5).
+  In an end lane of an open well (whether the split happens mid-well or at the
+  rim), both released Flippers flip in the single available inward direction,
+  staggered by half a flip. Superzapper destruction does not split (§5).
 - Dies to one shot (splitting). Score: 100 (released Flippers score separately).
 
 ### 6.3 Spiker (from level 4)
@@ -249,11 +260,13 @@ come from the difficulty model (§8). Global combat rules:
   up to the per-level maximum `SpikeH` (i.e. it reverses at depth `1 − SpikeH`).
   It then **descends its lane at its climb speed** (Climb × the 0.8 Spiker
   multiplier, §8.3) to depth 1, switches instantaneously at the bottom to a
-  uniformly random **different** lane (sim RNG), and begins climbing there,
-  extending that lane's spike. It cycles like this indefinitely — Spikers never
-  despawn and must be shot for the wave to complete, but they do **not** count
-  toward `MaxOnWell` (they are harmless during normal play and would otherwise
-  throttle the spawner — D32). **Spikes only grow (via a climbing Spiker) or
+  uniformly random lane drawn from those **not currently occupied by another
+  Spiker** (sim RNG; at most one Spiker per lane — the spawner applies the same
+  exclusion, §6), and begins climbing there, extending that lane's spike. It
+  cycles like this indefinitely — Spikers never despawn and must be destroyed
+  (shot, or caught by a Superzapper) for the wave to complete, but they do
+  **not** count toward `MaxOnWell` (they are harmless during normal play and
+  would otherwise throttle the spawner — D32). **Spikes only grow (via a climbing Spiker) or
   shrink (via trimming), never otherwise:** a lane's spike top rises to follow
   its resident Spiker only while the Spiker climbs **above** the current top; it
   never rises on its own, so a trim is never reverted (a resident Spiker
@@ -310,9 +323,10 @@ come from the difficulty model (§8). Global combat rules:
   electrified lane is stable for at least the telegraph's final half; a flip
   timer expiring during the freeze fires at pulse end, §6). The pulse affects
   only the player: player shots pass through an electrified lane unharmed and
-  can destroy the Pulsar at any time, including mid-pulse — and **a lane's
-  electrification ends the instant its Pulsar is destroyed** (a same-tick shot
-  save works here too, per the §6 tick order).
+  can destroy the Pulsar at any time, including mid-pulse — and **a lane is
+  electrified while any participating Pulsar on it is alive; it de-electrifies
+  the instant the last such Pulsar dies** (a same-tick shot save works here too,
+  per the §6 tick order).
 - Fires shots per §6. Dies to one shot. Score: 200.
 
 ### 6.6 Enemy shots
@@ -407,7 +421,7 @@ attempts (§6; only non-Spiker enemies count toward MaxOnWell).
 | mouseSensitivity (pointer-locked) | 50 px per lane |
 | per-tick rim-movement clamp | 0.45 lanes/tick (must stay < 0.5 so lane crossings are never skipped — §4) |
 | shotSpeed (player) | 1.5 depth/s |
-| fireInterval (player) | 0.18 s (must stay > flipAnimTime/2 + (enemyHalfExtent + shotHalfExtent)/shotSpeed + one tick ≈ 0.125 + 0.02 + 0.017 ≈ 0.162 s, so a rim-flip landing is not auto-covered by the hold-fire stream — D29) |
+| fireInterval (player) | 0.18 s (must stay > flipAnimTime/2 + (enemyHalfExtent + shotHalfExtent)/shotSpeed + one tick ≈ 0.125 + 0.02 + 0.017 ≈ 0.162 s, so a rim-flip landing is not auto-covered by the hold-fire stream — D40) |
 | max player shots | 8 |
 | flipAnimTime | 0.25 s |
 | flipSeekBias | 0.5 (fraction of mid-well flips that seek the player; the rest step to a random adjacent lane — governs whether hold-fire camping is survivable; tune against the anti-camping test, §13) |
@@ -540,6 +554,9 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
   `devicePixelRatio`-aware backing store **capped at DPR 2**.
 - Pure line rendering: strokes on black. Neon glow via layered strokes (a wide
   low-alpha pass under a thin bright core) — **not** `shadowBlur` (too slow).
+  If the bench (§12.6) misses its budget on the reference machine, the glow
+  degrades gracefully to a single bright stroke (dropping the wide pass) as a
+  documented fallback rather than dropping frames.
 - **The player's current lane is rendered highlighted** (brighter rim-to-bottom
   outline, the classic yellow-sector cue) — it is the primary aiming feedback
   for lane-based combat.
@@ -567,8 +584,13 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
 - Rendering interpolates entity positions between the previous and current sim
   ticks (§12.3); rim positions interpolate along the shortest arc (mod 16 on
   closed wells); entities that teleport (spawn, respawn, level change, warp
-  start) set prev = curr for that tick. Allocation in hot render paths is
-  avoided by reusing buffers (the per-tick sim event list is fine).
+  start, and a Spiker's instantaneous bottom lane-switch, §6.3) set
+  prev = curr for that tick so no slide is drawn. A flipping enemy is **not**
+  interpolated as a lateral slide: the sim exposes each enemy's flip phase
+  (source lane, destination lane, animation progress 0→1), and the renderer
+  draws the signature lane-over-lane rotation about the shared edge from it
+  (criterion 12(d)). Allocation in hot render paths is avoided by reusing
+  buffers (the per-tick sim event list is fine).
 
 ### 11.2 Audio
 - Web Audio API, all sounds synthesized (oscillators/noise + envelopes). No
@@ -646,13 +668,15 @@ Pure logic is separated from I/O so game rules are unit-testable without a DOM:
   nothing else; the sim never reads wall-clock time, `Math.random`, or any
   browser API. Given the same seed and the same snapshot sequence, a run is
   bit-identical on the same JS engine/build (D17). **Engine-stability
-  constraint:** state-affecting sim math uses only IEEE-754-deterministic
-  operations (+ − × ÷, sqrt, rounding, integer and bit ops, RNG draws);
-  implementation-defined transcendentals (sin, cos, pow, exp, …) are permitted
-  only in projection and render-facing code whose outputs never feed back into
-  sim state — enforced by a lint rule (§13). This keeps the §13 golden replay
-  stable across engines/Node versions. Pauses do not exist in the snapshot
-  stream (D19).
+  constraint:** state-affecting sim math uses only operations ECMAScript
+  specifies exactly (+ − × ÷ on doubles, comparison, rounding, integer and bit
+  ops, RNG draws); it avoids `Math.sqrt` and the transcendentals (sin, cos,
+  pow, exp, …), which ECMAScript leaves implementation-approximated — distance
+  comparisons use squared magnitudes, and those functions are permitted only in
+  projection and render-facing code whose outputs never feed back into sim
+  state (enforced by a lint rule, §13). This keeps the §13 golden replay stable
+  across engines/Node versions. Pauses do not exist in the snapshot stream
+  (D19).
 - **Seed provenance:** for normal play the app draws one seed at game start
   from a browser entropy source (`Date.now()` xored with `crypto.getRandomValues`
   where available) **outside** the sim and passes it into the sim config; the
@@ -684,8 +708,11 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
   pass guarantees headroom for any legal in-game state. It runs seeded and
   scripted for 60 s in a focused foreground tab and reports:
   - **work time** per frame — `performance.now()` measured around the sim
-    tick(s) + render + audio dispatch inside each rAF callback. This is the
-    sole pass/fail metric for §15 criterion 7 (refresh-rate-independent).
+    tick(s) + render + audio dispatch inside each rAF callback. The gate uses
+    the arithmetic **mean** and the **95th percentile** (nearest-rank) over all
+    per-frame samples collected during the 60 s window (the first frame is
+    discarded as warm-up). This is the sole pass/fail metric for §15
+    criterion 7 (refresh-rate-independent).
   - Informational only (not gated — they depend on the display, incl. VRR):
     dropped-frame percentage against the detected refresh interval and raw
     rAF-interval statistics.
@@ -772,15 +799,19 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     save), shots passing through pulses.
   - Player firing: 8-shot cap, fireInterval cap, auto-fire, shot spawn depth
     (0 in play, Blaster depth in warp); movement remains active during WARP.
-  - **Anti-camping check:** scripted runs with the player stationary on one
-    lane holding fire, using the first 10 seeds of a fixed sequence (not
-    hand-picked — the property must hold for all), each run **fails to clear
-    the level** (a wave needs enemies destroyed on other lanes, which a
-    stationary player cannot reach — §6 flip targeting) and ends in player
-    death; assert both across all 10 seeds on levels 1 and 3. This gates
-    `flipSeekBias` and `fireInterval`: it must pass with margin, not vacuously
-    (D29). The test uses the same collision model as play, so it reflects the
-    real rim-flip-landing kill window (§8.3 fireInterval constraint).
+  - **Anti-camping check:** scripted runs with the player stationary holding
+    fire, using the first 10 seeds of a fixed sequence (not hand-picked — the
+    property must hold for all). Each run must, within a 120 s sim-time bound,
+    both **fail to clear the level** (a wave needs enemies destroyed on other
+    lanes, which a stationary player cannot reach — §6 flip targeting) and end
+    in player death. Cover **both topologies**: a closed well with the player
+    mid-rim (level 1, geometry index 0) and an **open well with the player
+    clamped at an end lane** (level 9, geometry index 8 — the single-direction
+    funnel worst case), both pre-Fuseball so only flip-targeting anti-camping is
+    exercised. This gates `flipSeekBias` and `fireInterval`: it must pass with
+    margin, not vacuously (D39). The test uses the same collision model as play,
+    so it reflects the real rim-flip-landing kill window (§8.3 fireInterval
+    constraint).
   - Warp: the descent fairness invariant test **simulating the actual descent**
     per §9; spike death during warp decrements a life, keeps the level, does
     not replay the descent, and transitions WARP → PLAYING (lives remain) or
@@ -825,8 +856,8 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
   per-tick state hashes (valid across any tuning).
 - **Static checks:** `tsc --noEmit` (strict) and lint pass clean. The lint
   config includes (a) a rule (e.g. `no-restricted-properties`) forbidding
-  implementation-defined `Math` functions (sin, cos, tan, atan2, pow, exp,
-  log, …) in `sim/` outside the projection module, enforcing §12.3's
+  implementation-approximated `Math` functions (sqrt, sin, cos, tan, atan2,
+  pow, exp, log, …) in `sim/` outside the projection module, enforcing §12.3's
   engine-stability constraint; and (b) a rule forbidding browser/DOM globals
   (`window`, `document`, `localStorage`, `performance`, `requestAnimationFrame`,
   `Math.random`, `Date`, …) in `sim/`, `persist/`, and the pure `input/`

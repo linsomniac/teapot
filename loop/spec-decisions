@@ -99,7 +99,7 @@ engage); keyboard is the always-available fallback; lock loss auto-pauses via
 Any positive value makes farming the last enemy's shots (especially a Pulsar,
 which never leaves the well) a dominant, unbounded high-score strategy. Zero
 matches the original closely enough and kills the exploit. Spike trims stay at
-1 point: rate-bounded (~7 pts/s at the current fireInterval), requires standing
+1 point: rate-bounded (under ~6 pts/s at the 0.18 s fireInterval), requires standing
 in harm's way, and the wave still can't end until the Spiker is dead — not a
 viable farm.
 
@@ -334,3 +334,14 @@ forward (0-tick frames just accrue). This preserves total mouse movement, keeps
 the per-tick speed cap honest regardless of refresh rate or hitches, and never
 reuses a snapshot across ticks — so the golden replay's snapshot stream is
 well-defined.
+
+## D44. Topology mapping pinned; anti-camping verified on both topologies; one Spiker per lane (review round 6)
+
+Three round-6 refinements: (1) geometry indices 0–7 are closed wells and 8–15
+open, so each level's topology is deterministic (was implementer's choice).
+(2) The anti-camping test — previously only closed-well levels 1 and 3 — now
+also covers an open well with the player clamped at an end lane (level 9), the
+single-direction-funnel worst case that fully player-seeking flips created;
+without this, a build could pass on closed wells yet allow end-camping on ~half
+the levels. (3) At most one Spiker per lane (spawner and lane-switch exclude
+occupied lanes), removing undefined multi-resident spike growth/kill semantics.

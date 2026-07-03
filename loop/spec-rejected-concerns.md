@@ -27,8 +27,8 @@ the picture.
 - **Raised by:** anticipated follow-on to the enemy-shot-farming finding (round 1,
   gameplay dimension); pre-emptively documented.
 - **Rejected because:** trim points are rate-bounded by player fire rate
-  (~7 pts/s at fireInterval 0.15 s vs. thousands/minute from normal play), require
-  standing on a spiked lane, and the wave cannot stall indefinitely for farming
+  (under ~6 pts/s at fireInterval 0.18 s vs. thousands/minute from normal play),
+  require standing on a spiked lane, and the wave cannot stall indefinitely for farming
   purposes without the player forgoing all meaningful scoring. Enemy-shot farming
   was the real exploit and was fixed by setting enemy-shot points to 0 (D14).
 
@@ -40,11 +40,12 @@ the picture.
   shots necessarily intercepts anything on the lane — that is inherent to the
   geometry, matches the original (player shots destroy enemy shots), and making
   interception probabilistic would feel like random unfair deaths. Camping is
-  instead broken where it was actually won: the guaranteed mid-flip rim kill
-  (fireInterval now exceeds the flip-landing window — D29) and Fuseball rim
-  entries, with a §13 anti-camping test asserting a stationary hold-fire run
-  dies. The other sub-suggestions (fire-cadence change, anti-camping test) were
-  accepted.
+  instead broken by forcing rotation: partly-random flip targeting sends a
+  share of enemies to the rim on other lanes (D39), the fireInterval was
+  corrected to account for the collision extents (D40), and a §13 anti-camping
+  test on both a closed and an open well asserts a stationary hold-fire run
+  fails to clear and dies. The other sub-suggestions (fire-cadence change,
+  anti-camping test) were accepted.
 
 ## R5. "§12.6 references a nonexistent acceptance criterion 15.7"
 
