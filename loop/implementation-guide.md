@@ -109,6 +109,7 @@ teapot/
         tuning.ts            # §8.3 constants
         scoring.ts           # §7 table
       well.ts                # lane math, player-lane rule, shortest-arc (§4)
+      levels.ts              # level→geometry-index/palette-index mapping (§4)
       projection.ts          # (lane,depth)->screen; the ONLY sim/ transcendental site
       stepper.ts             # pure fixed-timestep accumulator (§12.3)
       collision.ts           # swept 1-D depth overlap (§6.7)
@@ -226,9 +227,11 @@ export interface Enemy {
   climbDir?: 1 | -1;    // spiker/pulsar/fuseball climb(+1)/descend(-1) phase (§6.3/6.4/6.5)
   // Per-kind fields (each task below adds its own and hashes it — Phase 4 preamble):
   rimTimer?: number;      // fuseball rim residency countdown (Task 4.4, §6.4)
+  rimDir?: 1 | -1;        // fuseball fixed rim-crawl direction until an open end (Task 4.4, §6.4)
   jitterTimer?: number;   // fuseball 0.5 s speed-redraw clock (Task 4.4)
   speedMul?: number;      // fuseball current jitter multiplier (Task 4.4, §6.4)
-  descentTarget?: number; // fuseball post-rim descent target depth ∈ [0.6,1] (Task 4.4)
+  descentTarget?: number; // fuseball post-rim descent target, redrawn at each rim→descent
+                          // transition, depth ∈ [0.6,1] (Task 4.4, §6.4)
   pulseJoined?: boolean;  // pulsar participates in the current pulse cycle (Task 4.5, §6.5)
   // (Spiker reversal depth is 1 − LevelParams.spikeH — a per-level value, not a
   //  per-enemy field; there is deliberately no Enemy.spikeH.)
@@ -693,7 +696,10 @@ Lethality steps 4–5 set a `playerDiedThisTick` flag and emit the `playerDied`
 event (consumed by `applyScore`'s bonus-life guard, Task 3.3); the Phase-4
 "dies"/"survives" tests assert this flag, and Task 5.3 later wires it to the
 life-decrement + PLAYING→GET_READY transition. (`playerDiedThisTick` is a
-per-tick transient, not hashed.)
+per-tick transient, not hashed.) **Every same-tick-save test (4.1 rim, 4.5 pulse,
+4.6 enemy shot, 5.2 warp) includes a co-located control** — the identical setup with
+the saving player shot removed asserts the player *does* die — so a "survives"
+result can't pass vacuously (e.g. because the lethality wasn't wired up).
 
 ### Task 4.1: Flip mechanics + Flipper
 
@@ -829,10 +835,12 @@ export function updatePulsar(e: Enemy, s: SimState, lp: LevelParams, cfg: GameCo
 **Files:** `src/sim/spawner.ts`, tests.
 - [ ] **Test (§13 spawner area):** attempt every SpawnInt, first after PLAYING entry;
   spawn only if threatening on-well count < MaxOnWell (Spikers excluded) and budget
-  remains; type drawn weighted by remaining budget (assert over many seeded draws
-  that the observed type distribution tracks the remaining-budget weights — e.g. a
-  budget of {flipper:9, tanker:1} yields ≈9:1, distinguishing weighted from uniform);
-  lane uniform, except Spikers
+  remains; type drawn weighted by remaining budget — test the **pure type-selection
+  function** against a **fixed (non-decremented) budget** of {flipper:9, tanker:1}
+  over ~10k seeded draws and assert P(flipper) ≈ 0.9 (rejecting the uniform 0.5).
+  (Spawning to exhaustion is budget-forced to 9:1 regardless of weighting, so it
+  cannot distinguish weighted from uniform — test the single-draw distribution
+  instead.) Lane uniform, except Spikers
   exclude lanes already holding a Spiker (defer if none free); per-type budgets match
   the table initially. **A newly spawned enemy sets `prevLane=lane`,
   `prevDepth=depth`** (the teleport-no-tween convention, §11.1) — asserted here;
@@ -961,7 +969,9 @@ Keep hot paths allocation-free (reuse buffers; I3).
   glyph set the UI uses: `A`–`Z`, `0`–`9`, space, and the on-screen punctuation
   (`×` for the clear bonus, `.`, `,`, `:`, `-`, `!`). Scores render as plain digit
   runs with no thousands separators (keeps the glyph set small); the comma is only
-  for any incidental UI copy. Commit.
+  for any incidental UI copy. (If Task 8.4's screens introduce a glyph not listed
+  here, extend the font module then — the font is authored to cover the screens, so
+  the two tasks stay in sync.) Commit.
 
 ### Task 8.2: Well + player-lane highlight + interpolation
 - [ ] Draw the well via `project` (§11.1); highlight the rounded `playerLane`; draw
@@ -1024,8 +1034,10 @@ Keep hot paths allocation-free (reuse buffers; I3).
 - [ ] **Escape is phase-gated (one owner):** the input layer routes Escape as
   `snapshot.back` while the sim is in a menu state (TITLE/LEVEL_SELECT/HIGH_SCORE_
   ENTRY) and as the app-layer pause toggle while in PLAYING/GET_READY/WARP — it is
-  never both on one keypress. M (mute), P (pause), F3 (overlay), and Q (quit) are
-  app-layer, never sim inputs.
+  never both on one keypress. M (mute), P (pause), F3 (overlay) are app-layer keys
+  the sim never sees. **Q** is app-layer at the key level (only the pause overlay
+  reads it) but the app translates it into the `snapshot.quit` sim input (§12.3),
+  so the sim does receive it as a UI intent — unlike M/P/F3.
 - [ ] Keyboard; pointer-lock request on canvas click in PLAYING/GET_READY/WARP
   (`unadjustedMovement:true`, retry without on not-supported, defensive non-Promise
   return); **exit any held pointer lock when the sim phase leaves
@@ -1112,9 +1124,10 @@ Keep hot paths allocation-free (reuse buffers; I3).
 ### Task 12.3: Hash-completeness test + benchMode census-hold test
 **Files:** `src/__tests__/hashCompleteness.test.ts`, `src/__tests__/benchMode.test.ts`.
 - [ ] Assert the hash changes when any future-affecting state changes. **Drive the
-  mutation set programmatically from the `SimState` field set** (and representative
-  entity/shot/spike fields) rather than a hand list, so a newly added field is
-  covered automatically — excluding only the render-only interpolation fields
+  mutation set programmatically from the `SimState` field set** — and, for the entity
+  arrays, from the full `Enemy`/`Shot`/`Spike` field sets (mutate each field of one
+  instance) — rather than a hand list, so a newly added field is covered
+  automatically — excluding only the render-only interpolation fields
   (`prevRimPos`, `prevWarpDepth`, `prevLane`, `prevDepth`, `paletteIndex`, which the
   renderer derives). This backstops the Task 12.1 manual audit and the
   add-to-hash-as-you-go rule.
@@ -1151,9 +1164,10 @@ The rules themselves were activated in Task 0.1 and have guarded sim code all al
 - [ ] Walk every §15 criterion (1–12); confirm each maps to a green test or a checked
   manual/visual item. Fill the **manual browser-integration checklist** (§13) and the
   **visual identity checklist** (§15.12) per supported browser; run the **smoke pass**
-  (§13) in Chrome, Firefox, Edge, Safari; run `?bench=1` on the reference machine and
-  record machine/browser/display + work-time numbers (§15.7). Record results in
-  `loop/acceptance-results.md`. Commit.
+  (§13) in Chrome, Firefox, Edge, Safari; run `?bench=1` **in both latest Chrome and
+  latest Firefox** (the two distinct engines, §15.7) on the reference machine and
+  record each engine's mean/p95 work-time numbers + machine/display — both must meet
+  mean ≤ 12 ms / p95 ≤ 16 ms. Record results in `loop/acceptance-results.md`. Commit.
 - [ ] Final `/codex-review` of the whole tree; address medium+ or record rejected.
   Commit. **Definition of Done for the project:** all §15 criteria satisfied,
   `npm run check` green, bench within budget, smoke pass clean in all four browsers.
