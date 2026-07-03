@@ -1,0 +1,98 @@
+# Implementation Decisions
+
+Choices made while writing `loop/implementation-guide.md` and `loop/checklist.md`.
+These are implementation-level (tooling, file layout, code shape) and do not change
+any behavior fixed by `loop/specification.md`. Each can be overridden by the
+developer; if overridden, update the guide, checklist, and (if relevant) the spec.
+
+## I1. Test layout: colocated `*.test.ts` next to source
+
+Vitest's default and lowest-friction layout. `src/sim/lane.ts` →
+`src/sim/lane.test.ts`. Keeps a unit and its tests in one place (spec §12.1's
+"files that change together live together"). Integration/acceptance tests that
+span modules live in `src/__tests__/` (e.g. replay, anti-camping, economy).
+
+## I2. Node version pinned to 22 LTS via `.nvmrc` and `engines`
+
+Spec §12.3/§13 require the golden replay to be stable on "the same JS
+engine/build" and CI to pin the Node version. Chose Node 22 (active LTS as of
+2026). Recorded in `.nvmrc` and `package.json` `engines.node`.
+
+## I3. Entity storage: array-of-structs with object pools
+
+Enemies, shots, and particles are plain objects held in arrays, each carrying
+`prevLane/prevDepth` and `currLane/currDepth` for interpolation (spec §12.3).
+Freed objects return to a per-type pool so the render/sim hot loops allocate
+nothing (spec §11.1). Chosen over struct-of-arrays for readability; entity counts
+are tiny (≤ ~64), so AoS cost is irrelevant.
+
+## I4. Config injection via a single `GameConfig` object
+
+`createSim(config: GameConfig, seed: number)` (spec §12.2/D41). `GameConfig`
+bundles the difficulty anchors (§8.2), tuning constants (§8.3), score table (§7),
+and geometry data (§4). The app builds it from the live data modules; tests build
+it from a frozen snapshot checked into `src/__tests__/fixtures/`.
+
+## I5. RNG: mulberry32, one instance in sim state, explicit derivation
+
+`sim/rng.ts` exports `makeRng(seed)` returning `{ next(): number, state(): number,
+setState(n) }`. The sim holds exactly one RNG; the renderer holds a *separate*
+mulberry32 seeded independently (spec §11.1) so visuals never perturb sim
+determinism. RNG internal state is part of the sim hash (spec §12.2).
+
+## I6. Fixed-point-free but transcendental-free sim math
+
+Per spec §12.3, sim math uses only `+ − × ÷`, comparison, `Math.round/floor/ceil`,
+integer/bit ops, and RNG. No `Math.sqrt`/`sin`/`cos` in `sim/` outside the
+projection module; the ESLint `no-restricted-properties` rule enforces it.
+Distance checks use squared magnitudes. (Lane math is 1-D on `depth`, so this is
+easy to honor.)
+
+## I7. Types: branded-free plain numbers with clear names
+
+`type Lane = number` (fractional for rimPos, integer for a resolved lane index),
+`type Depth = number` (0..1). No nominal typing/branding — the spec's rules are
+simple enough that named `number` aliases plus tests are sufficient and keep the
+code readable (global CLAUDE.md: "boring solution", maintainability over
+cleverness).
+
+## I8. State machine as a discriminated `GameState` union + pure reducer
+
+`sim/state.ts`: `type Phase = 'TITLE' | 'LEVEL_SELECT' | 'PLAYING' | 'GET_READY'
+| 'WARP' | 'GAME_OVER' | 'HIGH_SCORE_ENTRY'` and a pure `step(state, input) =>
+{ state, events }`. Transitions live in one file so the §13 "every transition and
+no others" test can target it directly. Pause is NOT here (app-layer, D19).
+
+## I9. Events: a flat `SimEvent[]` returned per tick
+
+`tick()` returns `{ hash?, events: SimEvent[] }`. Events are a discriminated union
+(`{type:'enemyKilled', kind, depth, lane}`, `{type:'playerShot'}`,
+`{type:'pulseTelegraph'}`, …). Audio and particles consume events; the sim never
+imports audio/render. Keeps the sim pure (spec §12.2).
+
+## I10. Build/test scripts
+
+`package.json`: `dev` (vite), `build` (vite build), `test` (vitest run),
+`test:watch` (vitest), `typecheck` (tsc --noEmit), `lint` (eslint). `npm run check`
+runs typecheck + lint + test (the CI gate, spec §15.10).
+
+## I11. Phased build order (guide sections) — sim-first, inside-out
+
+Build the pure sim and persist layers first (fully unit-tested with no DOM), then
+render/audio/input, then app wiring, then integration + acceptance. This lets the
+riskiest logic (spec §13's test list) be verified before any browser code exists,
+matching the spec's separation of concerns. Phases are the checklist's top-level
+groups.
+
+## I12. Commit granularity: one commit per completed task (green tests)
+
+Per the writing-plans skill and the build prompt (`loop/prompt-3-build`): each
+task ends with passing tests and a commit. The checklist item is checked off in
+the same commit that completes it.
+
+## I13. `codex-review` after each task during build
+
+The build prompt (`loop/prompt-3-build`) asks for codex + internal review of each
+implemented item. The guide's per-task Definition of Done includes running the
+`/codex-review` skill (or `codex exec`) and addressing medium+ findings before
+checking the item off.
