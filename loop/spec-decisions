@@ -9,7 +9,7 @@ is overridden, update `loop/specification.md` to match and note the change here.
 
 - **Options:** (a) Faithful core, (b) Minimal MVP, (c) Full arcade clone.
 - **Chosen:** (a) Faithful core — single-player game with all 5 classic enemy types
-  (Flipper, Tanker, Spiker, Fuzzball, Pulsar), 16 well geometries cycling with color
+  (Flipper, Tanker, Spiker, Fuseball, Pulsar), 16 well geometries cycling with color
   changes, Superzapper, lives, arcade-style scoring, endless level progression.
 - **Why:** The description says "inspired by" Tempest, not a clone. Faithful core
   captures what makes Tempest recognizable while avoiding ROM-archaeology (exact
@@ -58,7 +58,7 @@ artifact, not core to the game. Out of scope.
 
 ## D8. Tankers carry Flippers only in v1 (chosen without asking)
 
-The original introduces Fuzzball-tankers and Pulsar-tankers in very late levels.
+The original introduces Fuseball-tankers and Pulsar-tankers in very late levels.
 V1 tankers always release two Flippers. Variant cargo is a listed future enhancement.
 
 ## D9. Scoring is "arcade-style", not ROM-accurate (chosen without asking)
@@ -213,9 +213,15 @@ Flipper died mid-flip with zero timing skill. fireInterval is now 0.15 s — lon
 than half a flip — so the point-blank save is a timed shot again and camping loses
 to rim Flippers probabilistically (and to Fuseballs outright). The constraint
 `fireInterval > flipAnimTime / 2` is recorded in the tuning table, and a §13 test
-asserts a scripted stationary hold-fire run dies within 90 s. spikeTrim rises
+asserts a scripted stationary hold-fire run dies. spikeTrim rises
 0.05 → 0.08 so the slower fire rate still satisfies the descent fairness
 invariant.
+
+*Superseded in part:* D40 corrected fireInterval to 0.18 s with an
+extent-aware constraint (the flipAnimTime/2 figure was insufficient), D39 added
+partly-random flip targeting as the primary anti-camping mechanism, and D44 set
+the current anti-camping test (both topologies, 120 s bound). The current
+numbers live in §8.3 and §13; this entry records the original reasoning.
 
 ## D30. Bonus-life interval raised to 30,000 (review round 3)
 
@@ -339,9 +345,24 @@ well-defined.
 
 Three round-6 refinements: (1) geometry indices 0–7 are closed wells and 8–15
 open, so each level's topology is deterministic (was implementer's choice).
-(2) The anti-camping test — previously only closed-well levels 1 and 3 — now
-also covers an open well with the player clamped at an end lane (level 9), the
+(2) The anti-camping test — previously only closed wells — now runs on level 1
+(closed, player mid-rim) and level 9 (open, player clamped at an end lane), the
 single-direction-funnel worst case that fully player-seeking flips created;
-without this, a build could pass on closed wells yet allow end-camping on ~half
-the levels. (3) At most one Spiker per lane (spawner and lane-switch exclude
+without the open-well case a build could pass on closed wells yet allow
+end-camping on ~half the levels. (3) At most one Spiker per lane (spawner and lane-switch exclude
 occupied lanes), removing undefined multi-resident spike growth/kill semantics.
+
+## D45. Round-7 refinements: bench resolution, Superzapper use-2, quit-to-title (review round 7)
+
+(1) The performance bench is pinned to a fixed render resolution (1440×1080 at
+DPR 2 = 2880×2160 backing store), since Canvas-2D fill cost scales with pixels
+and an unpinned window size made criterion 7 non-reproducible. (2) The
+Superzapper's second use destroys the enemy **nearest the rim** (deterministic,
+ties by lowest lane index) instead of a random one — a panic button should hit
+the most imminent threat, and it removes a sim-RNG draw. (3) A **Quit to title
+(Q)** action on the pause overlay routes through the normal GAME_OVER flow so a
+run can be abandoned without losing an earned high score; delivered as a
+`uiQuit` snapshot input. Plus clarifications recorded directly in the spec:
+bonus-life tick-order slot, pulseCycle sanity guard, state-hash contents,
+high-score entry loop, half-up difficulty rounding, Math.sqrt dropped from the
+deterministic-ops set, and the fractional-position player claw render.

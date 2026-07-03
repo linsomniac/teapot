@@ -1,6 +1,6 @@
 # Specification — "Teapot": a browser-based game inspired by Tempest
 
-Status: revised draft, review round 7
+Status: revised draft, review round 8
 Anchor: `loop/description` — "build a browser-based game inspired by the arcade game
 Tempest". Decisions and rationale: `loop/spec-decisions`. Rejected review concerns:
 `loop/spec-rejected-concerns.md`.
@@ -103,7 +103,11 @@ Non-goals and `loop/spec-decisions`).
   `unadjustedMovement: true`; if it rejects with a not-supported error, it
   retries without the option. Older engines' non-Promise `requestPointerLock`
   returns are handled defensively. Once locked, horizontal movement deltas map
-  to rim movement via `mouseSensitivity`, clamped per tick (§4/§8.3). Losing
+  to rim movement via `mouseSensitivity`, clamped per tick (§4/§8.3). (Because
+  `unadjustedMovement` is unsupported on Firefox and older Safari, raw mouse
+  feel varies slightly across browsers with the single fixed sensitivity; this
+  is accepted for v1, where keyboard is the primary control and sensitivity is
+  not configurable — §14.9.) Losing
   pointer lock for any reason (Escape, focus loss, rejection) auto-pauses the
   game via the `pointerlockchange`/`pointerlockerror` events — never by
   assuming the Escape keydown is delivered. Resuming: P resumes on keyboard; a
@@ -127,8 +131,10 @@ Non-goals and `loop/spec-decisions`).
   - Use 1 (from FULL): destroys **all enemies currently on the well**. Tankers
     are destroyed outright — they do **not** split. Enemy shots and spikes are
     unaffected.
-  - Use 2 (from PARTIAL): destroys **one** on-well enemy chosen uniformly at
-    random via the sim RNG (Tankers again destroyed without splitting).
+  - Use 2 (from PARTIAL): destroys **the one on-well enemy nearest the rim**
+    (smallest depth; ties broken by lowest lane index) — the most imminent
+    threat, so the panic button is useful when reached for (Tankers again
+    destroyed without splitting).
   - Further presses (EMPTY): no effect.
   - Activating with zero enemies on the well still consumes the use.
   - Accepted only in the PLAYING state (not GET_READY, not WARP).
@@ -219,10 +225,13 @@ come from the difficulty model (§8). Global combat rules:
   3. player-shot collisions (enemies, enemy shots, spike trims);
   4. enemy-shot lethality at the rim;
   5. contact, pulse, and warp-spike lethality;
-  6. spawner;
-  7. wave-completion check (PLAYING only; skipped on a tick in which the
+  6. bonus-life award (any bonus-life thresholds newly crossed by score gained
+     in steps 3–5 grant lives here — evaluated **before** a death this tick is
+     finalized, so crossing a threshold and dying on the same tick nets zero);
+  7. spawner;
+  8. wave-completion check (PLAYING only; skipped on a tick in which the
      player died);
-  8. state transitions.
+  9. state transitions.
   Because 3 precedes 4–5, a shot that connects on the same tick an enemy would
   kill saves the player — including a final spike trim on the tick the Blaster
   would have hit that spike during warp.
@@ -260,9 +269,10 @@ come from the difficulty model (§8). Global combat rules:
   up to the per-level maximum `SpikeH` (i.e. it reverses at depth `1 − SpikeH`).
   It then **descends its lane at its climb speed** (Climb × the 0.8 Spiker
   multiplier, §8.3) to depth 1, switches instantaneously at the bottom to a
-  uniformly random lane drawn from those **not currently occupied by another
-  Spiker** (sim RNG; at most one Spiker per lane — the spawner applies the same
-  exclusion, §6), and begins climbing there, extending that lane's spike. It
+  uniformly random lane drawn from those **other than its current lane and not
+  occupied by another Spiker** (sim RNG; at most one Spiker per lane — the
+  spawner applies the same exclusion, §6), and begins climbing there, extending
+  that lane's spike. It
   cycles like this indefinitely — Spikers never despawn and must be destroyed
   (shot, or caught by a Superzapper) for the wave to complete, but they do
   **not** count toward `MaxOnWell` (they are harmless during normal play and
@@ -308,7 +318,10 @@ come from the difficulty model (§8). Global combat rules:
   it also flips while descending) but never occupies the rim: at depth 0.15 it
   reverses and descends; at the bottom (depth 1) it reverses again and climbs —
   oscillating for the rest of the wave. It never despawns: the wave cannot
-  complete until every Pulsar is destroyed.
+  complete until every Pulsar is destroyed. (The original's Pulsar can reach the
+  rim; keeping it off the rim here is a deliberate inspired-by simplification —
+  it removes an ambiguous rim-Pulsar contact case and keeps the pulse the
+  Pulsar's only lethality vector.)
 - **Pulse timeline:** a per-level global pulse clock runs on PLAYING sim time
   from level start (it does not advance in GET_READY, and restarts its cycle at
   each PLAYING entry). Each cycle of length `pulseCycle` is: quiet for
@@ -378,12 +391,13 @@ arcade tables); they live in one data module so tuning is a one-file change.
 ### 8.1 Level definition
 Level N uses well geometry `(N−1) mod 16` and the color band of §4. Difficulty
 parameters are produced by one deterministic function of N: **linear
-interpolation between the anchor rows below**, with integer columns rounded to
-nearest, values held flat beyond the last anchor (the endless tail), per-type
-budgets forced to 0 before that enemy's introduction level (Flippers 1+,
-Tankers 3+, Spikers 4+, Fuseballs 11+, Pulsars 17+), and a "—" cell treated as
-the column's first defined value for interpolation purposes (the parameter is
-unused below the enemy's introduction level anyway).
+interpolation between the anchor rows below**, with integer columns rounded
+half-up (`floor(x + 0.5)`, matching §4), values held flat beyond the last
+anchor (the endless tail), per-type budgets forced to 0 before that enemy's
+introduction level (Flippers 1+, Tankers 3+, Spikers 4+, Fuseballs 11+,
+Pulsars 17+), and a "—" cell treated as the column's first defined value for
+interpolation purposes (the parameter is unused below the enemy's introduction
+level anyway).
 
 ### 8.2 Difficulty anchor table (initial tuning — values may be adjusted during playtesting, structure may not)
 
@@ -431,7 +445,7 @@ attempts (§6; only non-Spiker enemies count toward MaxOnWell).
 | fuseballRimTime | 3.0 s |
 | Fuseball speed-jitter redraw | every 0.5 s, uniform [0.3, 1.5] |
 | pulseDuration | 0.4 s |
-| pulse telegraph | 0.5 s |
+| pulse telegraph | 0.5 s (the §8.2 Pulse column must keep pulseCycle ≥ telegraph + pulseDuration so the quiet phase never goes negative — a §13 guard) |
 | Pulsar reversal depth | 0.15 |
 | minimum enemy firing depth | 0.2 |
 | spikeTrim (per shot) | 0.08 depth |
@@ -447,7 +461,7 @@ attempts (§6; only non-Spiker enemies count toward MaxOnWell).
 ### 8.4 Wave completion
 The level ends when the spawn budget is exhausted **and** no enemies remain on
 the well. The check runs only in the PLAYING state and never on a tick in which
-the player died (§6 tick order step 7). All in-flight shots are cancelled;
+the player died (§6 tick order step 8). All in-flight shots are cancelled;
 spikes remain. The level-clear bonus is awarded at this moment (before the
 warp).
 
@@ -495,8 +509,8 @@ GET_READY → PLAYING             (get-ready timer elapses)
 PLAYING → WARP                  (wave complete)
 WARP → PLAYING                  (descent complete; or spike death with lives
                                  remaining — descent ends, next level begins)
-PLAYING → GAME_OVER             (death, no lives left)
-WARP → GAME_OVER                (spike death, no lives left)
+PLAYING → GAME_OVER             (death, no lives left; or Quit-to-title)
+WARP → GAME_OVER                (spike death, no lives left; or Quit-to-title)
 GAME_OVER → HIGH_SCORE_ENTRY    (after the game-over beat, score qualifies)
 GAME_OVER → TITLE               (after the game-over beat, otherwise)
 HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
@@ -514,7 +528,12 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
   blur, or pointer-lock exit (§5); those triggers are ignored in other states
   (menu and game-over screens just keep ticking; a throttled background rAF is
   harmless there because the accumulator clamps, §12.3). The overlay dims the
-  game. Resume: P, or a click per §5's lock-resume rule.
+  game. Resume: P, or a click per §5's lock-resume rule. The overlay also offers
+  **Quit to title (Q)**, which ends the current game through the normal
+  GAME_OVER flow (the run's score still counts and reaches high-score entry if
+  it qualifies), so a run can be abandoned without losing an earned high score.
+  Quit is delivered to the sim as a `uiQuit` input (§12.3), forcing the
+  PLAYING/WARP → GAME_OVER transition.
 - **UI navigation (menus are keyboard-driven; the mouse plays no role outside
   gameplay, except the one title-click carve-out below):** in TITLE,
   LEVEL_SELECT, and HIGH_SCORE_ENTRY the sim converts the movement delta into
@@ -535,7 +554,9 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
 - **Title:** game name, "press fire or click to start" (reserved keys — M, P,
   Escape, F3 — keep their global functions and do not start the game), top-10
   high-score table, control summary, mute indicator. No AI demo game.
-- **Level select:** starting-level selector (§8.5) via UI navigation.
+- **Level select:** starting-level selector (§8.5) via UI navigation; the
+  selector opens at the highest allowed level (`max(9, maxLevelReached)`) so
+  returning players start where they left off, and ranges down to 1.
 - **Playing:** the game. HUD: score (top left), high score (top center), lives
   and Superzapper pips, level number.
 - **Game over:** "GAME OVER" over the final well for the game-over beat (§8.3);
@@ -544,8 +565,12 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
   table holds ≤ 10 entries; a score qualifies if the table has fewer than 10
   entries or the score is ≥ the 10th entry's score; a new entry ranks above
   existing entries with equal scores.
-- **High-score entry:** 3-initial arcade entry — characters A–Z, 0–9, and
-  space, rotated via UI navigation steps, confirmed with fire. Stored locally.
+- **High-score entry:** 3-initial arcade entry over an ordered, wrapping
+  character set (space, A–Z, 0–9). UI-navigation steps (§10) rotate the active
+  slot's character; each slot defaults to A; **fire** locks the active slot and
+  advances to the next; the third fire confirms all three and transitions to
+  TITLE. **Back** (Escape) returns to the previous slot to fix a mistake (and,
+  on the first slot, is inert). Stored locally.
 
 ## 11. Presentation
 
@@ -556,10 +581,14 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
   low-alpha pass under a thin bright core) — **not** `shadowBlur` (too slow).
   If the bench (§12.6) misses its budget on the reference machine, the glow
   degrades gracefully to a single bright stroke (dropping the wide pass) as a
-  documented fallback rather than dropping frames.
+  documented last-resort fallback rather than dropping frames — still stroked
+  wireframe line art (criterion 12(a/f) hold; only the soft halo is reduced).
 - **The player's current lane is rendered highlighted** (brighter rim-to-bottom
-  outline, the classic yellow-sector cue) — it is the primary aiming feedback
-  for lane-based combat.
+  outline on the rounded `playerLane`, the classic yellow-sector cue) — it is
+  the primary aiming feedback for lane-based combat. The claw cursor itself is
+  drawn at the player's smooth fractional rim position (interpolated per
+  §12.3), so movement reads continuously even though gameplay resolves to the
+  rounded lane.
 - **Per-enemy visual identity:** each enemy type has a distinct stroked
   silhouette and a fixed canonical color independent of the level band —
   Flippers red (bowtie silhouette), Tankers purple (diamond), Spikers and their
@@ -622,7 +651,12 @@ Pure logic is separated from I/O so game rules are unit-testable without a DOM:
   **fixed-timestep stepper as a pure function** (elapsed time in → tick count +
   interpolation alpha out, with clamping); the seeded sim RNG (e.g. mulberry32
   — every gameplay random draw goes through it); and a **stable state
-  serialization/hash** (for the self-consistency test and debugging). The sim
+  serialization/hash** covering *all* state that affects future ticks — every
+  entity's kind/lane/depth/flip phase/timers, all shots, spikes, the RNG
+  internal state, the pulse clock, score, lives, Superzapper state, per-type
+  remaining budgets, and the state-machine state — so the self-consistency and
+  golden-replay tests cannot pass while hiding divergence in any of them. The
+  sim
   is **constructed from an injected configuration** — the full sim-affecting
   tuning surface (§8.2 anchors, §8.3 constants, §7 score values, well geometry)
   plus a seed — rather than importing the live data modules directly; the app
@@ -664,7 +698,7 @@ Pure logic is separated from I/O so game rules are unit-testable without a DOM:
   on 60/90/120/144 Hz displays alike. Entities expose prev/curr positions.
 - **Determinism contract:** the sim advances only via `tick(inputSnapshot)`
   where the snapshot carries movement delta (fractional lanes, pre-clamped by
-  the input layer), fire/zap button states, and UI confirm/back inputs —
+  the input layer), fire/zap button states, and UI confirm/back/quit inputs —
   nothing else; the sim never reads wall-clock time, `Math.random`, or any
   browser API. Given the same seed and the same snapshot sequence, a run is
   bit-identical on the same JS engine/build (D17). **Engine-stability
@@ -705,8 +739,14 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
   MaxOnWell cap, covering a full split wave), 7 on-well Spikers, full-height
   spikes on all 16 lanes, an active Pulsar telegraph/pulse with electrified
   lanes, 8 enemy shots, 8 player shots, and continuous particle bursts — so a
-  pass guarantees headroom for any legal in-game state. It runs seeded and
-  scripted for 60 s in a focused foreground tab and reports:
+  pass guarantees headroom for any legal in-game state. Because Canvas-2D fill
+  cost (dominated by the layered glow) scales with backing-store pixels, the
+  bench also pins its render resolution: it runs at the **1440×1080 reference
+  playfield at DPR 2 (a 2880×2160 backing store)** regardless of actual window
+  size, so criterion 7 is measured at a fixed pixel count. (Normal play above
+  the reference size relies on the DPR-2 cap and the §11.1 glow-degradation
+  fallback as the safety valve.) It runs seeded and scripted for 60 s in a
+  focused foreground tab and reports:
   - **work time** per frame — `performance.now()` measured around the sim
     tick(s) + render + audio dispatch inside each rAF callback. The gate uses
     the arithmetic **mean** and the **95th percentile** (nearest-rank) over all
@@ -730,8 +770,11 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     `floor((N−1)/16) mod 6` across levels 1–112 including every 16-level
     boundary.
   - Lane math on open/closed wells: wrapping, clamping, adjacency, the
-    player-lane rule (§4) at boundaries; the winding/"clockwise" convention;
-    the per-tick rim-movement clamp (no lane skipping at max delta).
+    player-lane rule (§4, half-up rounding and closed-well `[0,16)`
+    normalization) at boundaries; the winding/"clockwise" convention; the
+    per-tick rim-movement clamp (no lane skipping at max delta); the
+    shortest-arc rim interpolation direction (mod 16 on closed wells, incl. the
+    wrap case) and the teleport prev=curr cases (§11.1).
   - Projection math invariants (depth-0 maps to rim polyline; deeper is closer
     to the vanishing point; all 16 geometries).
   - Input mapping functions: key-state → lane delta, mouse delta →
@@ -751,7 +794,10 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     Spikers never gate spawns); SpawnInt behavior incl. first-spawn timing at
     PLAYING entry; weighted type draw and uniform lane draw through the sim
     RNG; difficulty interpolation between anchors incl. "—" cells and the
-    EShot column; monotonic non-decreasing difficulty; tail behavior at levels
+    EShot column; **monotonic difficulty** in the harder direction for every
+    level step (budgets, MaxOnWell, Climb, MaxShots, EShot, SpikeH
+    non-decreasing; FlipInt, FireInt, Pulse, SpawnInt non-increasing); the
+    pulseCycle ≥ telegraph + pulseDuration guard (§8.3); tail behavior at levels
     200/500 (all parameters exactly equal to the level-96 anchor values).
   - Enemy fire scheduler (§6): delays drawn within [0.5, 1.5] × FireInt;
     MaxShots cap never exceeded; suppression redraws; eligibility (depth ≥
@@ -763,7 +809,7 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     budgets, released Flippers, all Fuseballs at 750, capped clear bonus) is
     below the bonus-life interval (§7).
   - Superzapper: FULL/PARTIAL/EMPTY transitions, no-split Tanker kills, use-2
-    uniform random target via the sim RNG, no-op at EMPTY,
+    nearest-the-rim target (ties: lowest lane index), no-op at EMPTY,
     consume-on-empty-well, PLAYING-state-only acceptance (rejected in
     GET_READY and WARP), persistence through death, reset at level start.
   - Death/respawn: PLAYING → GET_READY with enemies returned to budget by
@@ -808,17 +854,20 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     mid-rim (level 1, geometry index 0) and an **open well with the player
     clamped at an end lane** (level 9, geometry index 8 — the single-direction
     funnel worst case), both pre-Fuseball so only flip-targeting anti-camping is
-    exercised. This gates `flipSeekBias` and `fireInterval`: it must pass with
-    margin, not vacuously (D39). The test uses the same collision model as play,
-    so it reflects the real rim-flip-landing kill window (§8.3 fireInterval
-    constraint).
+    exercised. This gates `flipSeekBias` and `fireInterval`: to prevent a
+    vacuous pass, the **median** time-to-death across the 10 seeds must be below
+    60 s (half the bound) on each topology, so a small retune cannot slip it
+    from "dies comfortably" to "barely dies." The test uses the same collision
+    model as play, so it reflects the real rim-flip-landing kill window (§8.3
+    fireInterval constraint).
   - Warp: the descent fairness invariant test **simulating the actual descent**
     per §9; spike death during warp decrements a life, keeps the level, does
     not replay the descent, and transitions WARP → PLAYING (lives remain) or
     WARP → GAME_OVER (last life).
   - Sim state machine: every transition in §10's sim-owned diagram (including
-    GET_READY entry/exit and both WARP exits) and no others (pause is
-    app-layer and excluded; D19); UI-navigation step accumulation (one step
+    GET_READY entry/exit, both WARP exits, and the Quit trigger on
+    PLAYING/WARP → GAME_OVER) and no others (pause is app-layer and excluded;
+    D19); UI-navigation step accumulation (one step
     per ±1.0 lanes, rate cap, accumulator reset on emit and cleared on
     zero-cross/state entry — a long held input then release emits no post-
     release steps); the TITLE-only click-to-confirm carve-out.
@@ -924,8 +973,9 @@ the §13 smoke pass completes in that browser.
    acceptance notes), in the latest Chrome and Firefox — the two distinct
    engines (Edge shares Chrome's Blink/V8, so Chrome stands in for it; Safari
    is covered by the smoke pass, not this timing gate) — the `?bench=1` run
-   (§12.6, maximum-legal-load census) reports mean per-frame **work time**
-   ≤ 12 ms and p95 ≤ 16 ms. Dropped-frame statistics are informational only.
+   (§12.6, maximum-legal-load census at the fixed 2880×2160 backing store)
+   reports mean per-frame **work time** ≤ 12 ms and p95 ≤ 16 ms. Dropped-frame
+   statistics are informational only.
 8. HUD, title (reserved-key rule), level select (incl. Escape-to-title and UI
    step navigation), GET_READY, the app-layer pause overlay (manual from
    PLAYING/GET_READY/WARP; auto-pause on visibility loss, blur, and
