@@ -1,6 +1,6 @@
 # Specification — "Teapot": a browser-based game inspired by Tempest
 
-Status: revised draft, review round 9
+Status: APPROVED — both codex and internal review clear at medium+ (rounds 1–9)
 Anchor: `loop/description` — "build a browser-based game inspired by the arcade game
 Tempest". Decisions and rationale: `loop/spec-decisions`. Rejected review concerns:
 `loop/spec-rejected-concerns.md`.
@@ -82,7 +82,8 @@ Non-goals and `loop/spec-decisions`).
   (fractional), but the player always occupies **exactly one lane**. `round`
   means `floor(x + 0.5)` (half rounds up, deterministic). On closed wells
   `rimPos` is normalized to `[0, 16)` each tick and `playerLane = round(rimPos)
-  mod 16`; on open wells `playerLane = clamp(round(rimPos), 0, 15)`. Firing,
+  mod 16`; on open wells `rimPos` is clamped to `[0, 15]` and
+  `playerLane = round(rimPos)` (0–15). Firing,
   enemy-shot lethality, rim contact (Flipper and Fuseball), Pulsar lane kills,
   and warp spike collision all use this single rule. To keep lane crossings
   detectable by per-tick sampling, the input layer clamps the per-tick
@@ -136,9 +137,10 @@ Non-goals and `loop/spec-decisions`).
     are destroyed outright — they do **not** split. Enemy shots and spikes are
     unaffected.
   - Use 2 (from PARTIAL): destroys **the one on-well enemy nearest the rim**
-    (smallest depth; ties broken by lowest lane index) — the most imminent
-    threat, so the panic button is useful when reached for (Tankers again
-    destroyed without splitting).
+    (smallest depth; ties broken by lowest lane index — for a mid-flip enemy,
+    its current occupancy-half lane per §6) — the most imminent threat, so the
+    panic button is useful when reached for (Tankers again destroyed without
+    splitting).
   - Further presses (EMPTY): no effect.
   - Activating with zero enemies on the well still consumes the use.
   - Accepted only in the PLAYING state (not GET_READY, not WARP).
@@ -266,14 +268,18 @@ come from the difficulty model (§8). Global combat rules:
 
 ### 6.2 Tanker (from level 3)
 - Climbs its spawn lane slowly; never changes lanes; fires per §6.
-- When shot, or upon reaching the rim, it splits into **two Flippers** flipping
-  away in opposite directions (at the rim: both land on the adjacent lanes and
-  begin rim behavior; their landing flips are ordinary rim flips for lethality).
+- When shot, or upon reaching the rim, it splits into **two Flippers** created
+  at the Tanker's current depth, each beginning a flip (progress 0) toward an
+  opposite adjacent lane — so per §6 each is shootable on the Tanker's lane
+  during the first half of the flip, and its `FlipInt` timer starts when that
+  flip completes (at the rim: both land on the adjacent lanes and begin rim
+  behavior; their landing flips are ordinary rim flips for lethality).
   The Tanker itself is never lethal — reaching the rim on the player's lane just
   splits, and a rim self-split awards no points (points require a shot kill).
   In an end lane of an open well (whether the split happens mid-well or at the
   rim), both released Flippers flip in the single available inward direction,
-  staggered by half a flip. Superzapper destruction does not split (§5).
+  staggered by half of `flipAnimTime` (one starts its flip 0.5 × flipAnimTime
+  after the other). Superzapper destruction does not split (§5).
 - Dies to one shot (splitting). Score: 100 (released Flippers score separately).
 
 ### 6.3 Spiker (from level 4)
@@ -932,7 +938,11 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
   re-recorded only for intentional rule changes (or a reviewed engine upgrade —
   CI pins the Node version), with the diff reviewed. A companion test asserts
   self-consistency: two runs of the same seed + script produce identical
-  per-tick state hashes (valid across any tuning).
+  per-tick state hashes (valid across any tuning). A **hash-completeness test**
+  guards the hash itself: it mutates each category of sim state (an entity
+  field, a timer, the RNG state, score, a budget, the pulse clock, the
+  state-machine state) and asserts the hash changes — so a field silently
+  omitted from the hash fails CI rather than hiding nondeterminism.
 - **Static checks:** `tsc --noEmit` (strict) and lint pass clean. The lint
   config includes (a) a rule (e.g. `no-restricted-properties`) forbidding
   implementation-approximated `Math` functions (sqrt, sin, cos, tan, atan2,
