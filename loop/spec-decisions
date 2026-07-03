@@ -84,3 +84,48 @@ AI-played demo game. A demo player is real work with no gameplay payoff.
 `loop/` holds description, spec, guides, checklists, and decision/review logs.
 The game itself (package.json, index.html, src/, tests/) lives at the repository
 root so the repo is the game project.
+
+## D13. Mouse control is pointer-lock-only (review round 1; refines D2)
+
+Review found the original "mouse X maps to rim position, relative movement
+without pointer lock" scheme unimplementable on closed wells (cursor clamps at
+screen edges, killing continuous rotation) and riddled with Escape-key/pointer-
+lock conflicts. Decision: mouse control requires the Pointer Lock API (click to
+engage); keyboard is the always-available fallback; lock loss auto-pauses via
+`pointerlockchange`, and resume-by-click re-requests the lock. See spec §5.
+
+## D14. Destroying enemy shots scores 0 points (review round 1)
+
+Any positive value makes farming the last enemy's shots (especially a Pulsar,
+which never leaves the well) a dominant, unbounded high-score strategy. Zero
+matches the original closely enough and kills the exploit. Spike trims stay at
+1 point: rate-bounded (~10 pts/s), requires standing in harm's way, and the wave
+still can't end until the Spiker is dead — not a viable farm.
+
+## D15. "Fuseball" name restored; lane-based movement kept (review round 1)
+
+The enemy this spec previously called "Fuzzball" is the original's **Fuseball**;
+renamed for fidelity. The original Fuseball rides lane *edges*, which would add a
+second positioning system for one enemy; v1 keeps lane-based movement with
+erratic speed to preserve the feel. Edge-riding is listed as a non-goal (§14.7).
+
+## D16. Death on a spike during warp does not replay the descent (review round 1)
+
+The original makes you re-run the descent after a spike death. Rejected for v1:
+replaying punishes one mistake twice and adds a state-machine special case. The
+level counts as complete (bonus already awarded at wave completion), a life is
+lost, and play continues at the next level. Recorded as an inspired-by deviation
+(spec §9, non-goal §14.1).
+
+## D17. Determinism is scoped to a single JS engine (review round 1)
+
+The replay/determinism guarantee is bit-exact reproduction given the same seed
+and input-snapshot sequence **on the same JS engine/build**. Cross-browser
+floating-point identity is explicitly not claimed (transcendental functions are
+implementation-defined across engines).
+
+## D18. Every well has exactly 16 lanes (review round 1)
+
+Matches the original's 16-sector webs, removes the spec's earlier "≈14–16,
+≥12" wobble, and makes lane math, difficulty tuning, and geometry authoring
+uniform (closed = 16 rim vertices, open = 17).
