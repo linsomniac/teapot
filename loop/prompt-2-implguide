@@ -1,0 +1,21 @@
+Please review the implementation guide in the `loop` directory, keeping in mind the
+larger goals specified in the `loop/description` file, looking for any clarifying
+questions that might need to be asked during the implementation of this project.
+If any of those questions have obviously good recommendations, feel free to select them.
+Please ask me clarifying questions and adjust the implementation include those
+decisions.  Please record any clarifying questions and the decisions made into the file
+`loop/impl-clarifying.md`.  Please loop until your review finds no further points that
+need clarification for the implementation of this project.
+
+Then please review the checklist in the `loop` directory, keeping in mind the larger goals
+specified in the `loop/description` file.  For every item on the checklist, please
+review it against the specification, the implementation guide, and the description to
+see if any clarifying questions may need to be asked during the implementation of this
+checklist item.  If any of those questions have obviously good recommendations, feel free
+to select them.  Please ask me clarifying questions and adjust the implementation, spec,
+and checklist to include those decisions.  Please record any clarifying questions and
+the decisions made into the file `loop/impl-checklist.md`.  Please loop until your review
+finds no further points that need clarification for the implementation of this project.
+
+Then, please create a table of contents in the file `loop/toc.md` that has a of documents
+in the `loop` directory along with a concise description of what each document contains.

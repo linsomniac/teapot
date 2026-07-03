@@ -1,0 +1,86 @@
+# Specification Decisions
+
+Decisions made during creation of `loop/specification.md`. Where the developer was
+asked and did not respond within the interactive window, the recommended option was
+chosen and is recorded here. Any of these can be overridden by the developer; if one
+is overridden, update `loop/specification.md` to match and note the change here.
+
+## D1. Game scope: "faithful core" (chosen; user asked 2026-07-02, no response — recommended option taken)
+
+- **Options:** (a) Faithful core, (b) Minimal MVP, (c) Full arcade clone.
+- **Chosen:** (a) Faithful core — single-player game with all 5 classic enemy types
+  (Flipper, Tanker, Spiker, Fuzzball, Pulsar), 16 well geometries cycling with color
+  changes, Superzapper, lives, arcade-style scoring, endless level progression.
+- **Why:** The description says "inspired by" Tempest, not a clone. Faithful core
+  captures what makes Tempest recognizable while avoiding ROM-archaeology (exact
+  scoring tables, 2-player alternating, cabinet quirks) that adds effort without
+  serving the stated goal.
+
+## D2. Platform: desktop-first, keyboard + mouse (chosen; user asked 2026-07-02, no response — recommended option taken)
+
+- **Options:** (a) Desktop-first keyboard + mouse, (b) Desktop + mobile touch, (c) Keyboard only.
+- **Chosen:** (a) Desktop-first. Keyboard is the primary control; mouse is supported
+  as an alternative because it maps naturally to the original's spinner knob.
+  Touch/mobile is out of scope for v1 (listed as a future enhancement).
+- **Why:** Touch support roughly doubles input/UI design and testing surface for a
+  game whose core feel is precise rotary movement.
+
+## D3. Tech stack: TypeScript + Vite + Canvas 2D, zero runtime deps (chosen; user asked 2026-07-02, no response — recommended option taken)
+
+- **Options:** (a) TypeScript + Vite + Canvas 2D, (b) plain JS with no build step,
+  (c) TypeScript + WebGL (three.js/regl).
+- **Chosen:** (a). Vitest for unit tests, `tsc --strict` for type checking, zero
+  runtime dependencies, static `dist/` output.
+- **Why:** Tempest is line art; Canvas 2D with a manual 3D→2D projection reproduces
+  the vector look without a WebGL pipeline or a runtime dependency. TypeScript fits
+  the developer's stated preference for typed code.
+
+## D4. Visual style: neon vector/wireframe (chosen without asking — definitional)
+
+Glowing stroked outlines on black, per-16-level color cycling. A Tempest-inspired
+game that doesn't look like vector graphics fails the "inspired by" test.
+
+## D5. Audio: Web Audio API synthesized SFX, no audio assets (chosen without asking)
+
+Sound effects are synthesized at runtime (oscillators/noise). No music (the original
+had none). Mute toggle persisted in settings. Avoids asset licensing and keeps the
+build dependency-free.
+
+## D6. Persistence: localStorage (chosen without asking)
+
+High-score table (top 10, 3-initial entry), settings (mute), and highest level
+reached are stored in `localStorage`. No backend, no network calls.
+
+## D7. Single-player only (chosen without asking)
+
+The original's 2-player mode is alternating (not simultaneous) — it is a coin-op
+artifact, not core to the game. Out of scope.
+
+## D8. Tankers carry Flippers only in v1 (chosen without asking)
+
+The original introduces Fuzzball-tankers and Pulsar-tankers in very late levels.
+V1 tankers always release two Flippers. Variant cargo is a listed future enhancement.
+
+## D9. Scoring is "arcade-style", not ROM-accurate (chosen without asking)
+
+Point values are inspired by the original but defined by this spec (see the scoring
+table in `loop/specification.md`). Superzapper kills award no points, to keep the
+panic button from being the optimal scoring strategy.
+
+## D10. Starting-level selection is included, simplified (chosen without asking)
+
+The original's "SKILL STEP" starting-level choice is a signature feature and a big
+part of replayability, so it stays: the player may start at any level they have
+previously reached, capped at level 9 for a fresh profile's first game. No score
+bonus for starting deep (the original awarded one; dropped for simplicity).
+
+## D11. No attract-mode gameplay demo (chosen without asking)
+
+The title screen shows the logo, high scores, and controls, but does not run an
+AI-played demo game. A demo player is real work with no gameplay payoff.
+
+## D12. Planning docs live in `loop/`, game code at repo root (chosen without asking)
+
+`loop/` holds description, spec, guides, checklists, and decision/review logs.
+The game itself (package.json, index.html, src/, tests/) lives at the repository
+root so the repo is the game project.

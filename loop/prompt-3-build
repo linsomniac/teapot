@@ -1,0 +1,10 @@
+In the `loop` directory are documents describing a software project to build.  Please see
+`loop/toc.md` for a description of the documents.  The checklist and the implementation
+guide describe the software that needs to be built. This project is in a git repository
+and please commit your changes at every step along the way.
+
+Please loop over the checklist and implement the next logical item to be implemented
+until no further items can be completed.  Use codex and internal review to review
+the implementation of each item until both you and Codex are happy with the results.
+At every step ensure correctness and robustness of the results.  Once done, mark off
+the checklist item.

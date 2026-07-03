@@ -1,0 +1,30 @@
+In the file `loop/description` Is a description of a project I want built. We need to
+create a design Specification and an implementation guide including a to-do checklist
+That can be used for the implementation of the project and the checklist will be used
+for keeping the current status of the project. The files used for the planning, design,
+and implementation should all be placed into the `loop` directory.
+
+Create the specification document. Ask any clarifying questions that come up during
+the creation of the specification. Use the `description` file To ensure that the
+specification document does not drift from the core stated goals of the project. Use
+codex and internal review to review the specification And address any concerns raised.
+Documenting concerns raised which are Rejected So that it does not continue to
+flag them.  Loop on this, continuing to ask clarifying questions of me if necessary,
+until both you and Codex are happy with the results. However, if you have a clear
+recommendation between multiple choices, feel free to choose that and document that
+in a `loop/spec-decisions` file.  This loop is complete when both codex and internal
+review do not flag any medium or higher level concerns.
+
+Once the specification document is created, continue on with the implementation guide
+and to-do checklist.
+
+For the implementation guide and To-Do Checklist, use the specification To guide the
+implementation plan. Use the `description` file To ensure that the implementation
+guide and todo list do not drift from the core stated goals of the project.  Use codex
+and internal review to review the specification And address any concerns raised.
+Documenting concerns raised which are Rejected So that it does not continue to
+flag them.  Loop on this, continuing to ask clarifying questions of me if necessary,
+until both you and Codex are happy with the results. However, if you have a clear
+recommendation between multiple choices, feel free to choose that and document that
+in a `loop/impl-decisions` file.  This loop is complete when both codex and internal
+review do not flag any medium or higher level concerns.
