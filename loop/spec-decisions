@@ -366,3 +366,10 @@ run can be abandoned without losing an earned high score; delivered as a
 bonus-life tick-order slot, pulseCycle sanity guard, state-hash contents,
 high-score entry loop, half-up difficulty rounding, Math.sqrt dropped from the
 deterministic-ops set, and the fractional-position player claw render.
+
+*Round-8 corrections to the above:* Quit works from any pauseable state, so the
+state machine gained a GET_READY → GAME_OVER edge (not just PLAYING/WARP).
+Bonus lives are `floor(score/interval)`-based and re-checked after the step-8
+level-clear bonus (not only steps 3–5), so a threshold crossed by the clear
+bonus grants a life — matching the §7 economy invariant; a bonus life and a
+death on the same tick still net zero.
