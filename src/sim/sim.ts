@@ -11,6 +11,7 @@ import { geometryIndexForLevel, paletteIndexForLevel } from './levels';
 import { clampRimDelta, normalizeRimPos, playerLane } from './well';
 import { paramsForLevel, type LevelParams } from './difficultyCurve';
 import { advanceShots } from './enemies/shots';
+import { applyScore } from './scoring';
 import { hashState } from './hash';
 import {
   maxStartLevel,
@@ -87,15 +88,25 @@ function tickCombat(
   benchMode: boolean,
 ): void {
   const params = paramsForLevel(s.level, cfg.difficulty);
+  // Per-tick transients (never hashed): kill points accumulated by steps
+  // 3–5 for the single step-6 bonus-life pass, and the playerDiedThisTick
+  // flag steps 4–5 set (§6 bonus-life rule; Task 5.3 wires it to the
+  // life-decrement + GET_READY transition).
+  const ctx: TickCtx = { points: 0, playerDied: false };
   stepApplyInput(s, input, cfg, events); // 1 (Task 3.2)
   stepAdvanceEntities(s, cfg, params, events); // 2 (Tasks 3.2/4.x)
-  stepPlayerShotCollisions(s, cfg, events, benchMode); // 3 (Tasks 3.2/4.x)
-  stepEnemyShotLethality(s, cfg, events, benchMode); // 4 (Task 4.6)
-  stepContactLethality(s, cfg, events, benchMode); // 5 (Tasks 4.x/5.2)
-  stepBonusLife(s, cfg, events); // 6 (Task 3.3)
+  stepPlayerShotCollisions(s, cfg, ctx, events, benchMode); // 3 (Tasks 3.2/4.x)
+  stepEnemyShotLethality(s, cfg, ctx, events, benchMode); // 4 (Task 4.6)
+  stepContactLethality(s, cfg, ctx, events, benchMode); // 5 (Tasks 4.x/5.2)
+  stepBonusLife(s, cfg, ctx, events); // 6 (Task 3.3)
   stepSpawner(s, cfg, events); // 7 (Task 4.7)
-  stepWaveCompletion(s, cfg, events, benchMode); // 8 (Task 5.1)
+  stepWaveCompletion(s, cfg, ctx, events, benchMode); // 8 (Task 5.1)
   // 9: state transitions — runs for every phase in tick() below.
+}
+
+interface TickCtx {
+  points: number; // kill points from steps 3–5, granted in step 6
+  playerDied: boolean; // set by steps 4–5
 }
 
 // Step 1 (§6): apply the input snapshot — movement, fire, zap.
@@ -148,6 +159,7 @@ function stepAdvanceEntities(
 function stepPlayerShotCollisions(
   s: SimState,
   _cfg: GameConfig,
+  _ctx: TickCtx,
   _events: SimEvent[],
   _benchMode: boolean,
 ): void {
@@ -163,20 +175,28 @@ function stepPlayerShotCollisions(
 function stepEnemyShotLethality(
   _s: SimState,
   _cfg: GameConfig,
+  _ctx: TickCtx,
   _events: SimEvent[],
   _benchMode: boolean,
 ): void {}
 function stepContactLethality(
   _s: SimState,
   _cfg: GameConfig,
+  _ctx: TickCtx,
   _events: SimEvent[],
   _benchMode: boolean,
 ): void {}
+
+// Step 6 (§6): one bonus-life pass for the points steps 3–5 accumulated.
 function stepBonusLife(
-  _s: SimState,
-  _cfg: GameConfig,
-  _events: SimEvent[],
-): void {}
+  s: SimState,
+  cfg: GameConfig,
+  ctx: TickCtx,
+  events: SimEvent[],
+): void {
+  applyScore(s, ctx.points, cfg, ctx.playerDied, events);
+}
+
 function stepSpawner(
   _s: SimState,
   _cfg: GameConfig,
@@ -185,6 +205,7 @@ function stepSpawner(
 function stepWaveCompletion(
   _s: SimState,
   _cfg: GameConfig,
+  _ctx: TickCtx,
   _events: SimEvent[],
   _benchMode: boolean,
 ): void {}
