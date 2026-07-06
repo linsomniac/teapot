@@ -55,7 +55,7 @@ medium+ addressed → box checked → commit.
   top, trim-vs-kill priority, shielding, not counted in MaxOnWell) (§6.3).
 - [x] 4.4 Fuseball (0.3–1.5 jitter, temporary rim residency then descend to [0.6,1],
   symmetric rim contact, depth-banded score) (§6.4).
-- [ ] 4.5 Pulsar + pulse clock (oscillate/never-rim/never-despawn, telegraph/pulse,
+- [x] 4.5 Pulsar + pulse clock (oscillate/never-rim/never-despawn, telegraph/pulse,
   participation, flip freeze, full-duration lethality, de-electrify on death) (§6.5).
 - [ ] 4.6 Enemy fire scheduler + enemy shots (eligibility, [0.5,1.5]×FireInt, MaxShots,
   rim-kill, shot-vs-shot 0 pts) (§6.6).

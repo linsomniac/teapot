@@ -15,6 +15,7 @@ import { occupancyLane, updateFlipper } from './enemies/flipper';
 import { splitTanker, updateTanker } from './enemies/tanker';
 import { trimOrKill, updateSpiker } from './enemies/spiker';
 import { updateFuseball } from './enemies/fuseball';
+import { pulsePhase, updatePulsar } from './enemies/pulsar';
 import { sweptOverlap } from './collision';
 import { applyScore, pointsForKill } from './scoring';
 import { hashState } from './hash';
@@ -102,7 +103,7 @@ function tickCombat(
   stepAdvanceEntities(s, cfg, params, events, benchMode); // 2 (Tasks 3.2/4.x)
   stepPlayerShotCollisions(s, cfg, params, ctx, events, benchMode); // 3 (Tasks 3.2/4.x)
   stepEnemyShotLethality(s, cfg, ctx, events, benchMode); // 4 (Task 4.6)
-  stepContactLethality(s, cfg, ctx, events, benchMode); // 5 (Tasks 4.x/5.2)
+  stepContactLethality(s, cfg, params, ctx, events, benchMode); // 5 (Tasks 4.x/5.2)
   stepBonusLife(s, cfg, ctx, events); // 6 (Task 3.3)
   stepSpawner(s, cfg, events); // 7 (Task 4.7)
   stepWaveCompletion(s, cfg, ctx, events, benchMode); // 8 (Task 5.1)
@@ -153,6 +154,40 @@ function stepAdvanceEntities(
   events: SimEvent[],
   benchMode: boolean,
 ): void {
+  // Pulse clock (§6.5): runs on PLAYING sim time only; participation is
+  // decided at each telegraph start (later spawns join the next cycle) and
+  // cleared when the cycle wraps back to quiet.
+  if (s.phase === 'PLAYING') {
+    // Clock 0 (fresh PLAYING entry) counts as quiet even for a zero-quiet
+    // cycle (pulseCycle === telegraph + duration, legal per §8.3), so the
+    // first telegraph still registers as a start (codex P3).
+    const prevPhase =
+      s.pulseClock === 0
+        ? 'quiet'
+        : pulsePhase(s.pulseClock, params.pulse, cfg.tuning);
+    s.pulseClock += TICK_SEC;
+    const newPhase = pulsePhase(s.pulseClock, params.pulse, cfg.tuning);
+    if (newPhase !== prevPhase) {
+      if (newPhase === 'telegraph') {
+        // The telegraph event fires only when a Pulsar actually joins —
+        // params.pulse is defined (normalized) even on pre-Pulsar levels,
+        // and a participant-free telegraph would be a spurious SFX cue.
+        let joined = false;
+        for (const e of s.enemies) {
+          if (e.kind === 'pulsar') {
+            e.pulseJoined = true;
+            joined = true;
+          }
+        }
+        if (joined) events.push({ type: 'pulseTelegraph' });
+      } else if (newPhase === 'quiet') {
+        for (const e of s.enemies) {
+          if (e.kind === 'pulsar') e.pulseJoined = false;
+        }
+      }
+    }
+  }
+
   advanceShots(s.playerShots, cfg.tuning.shotSpeed, 1); // rim → bottom
   advanceShots(s.enemyShots, params.eshot, -1); // bottom → rim
   let rimSplitTankers: Enemy[] | null = null;
@@ -175,10 +210,8 @@ function stepAdvanceEntities(
       case 'fuseball':
         updateFuseball(e, s, params, cfg);
         break;
-      // Task 4.5: pulsar.
-      default:
-        e.prevLane = e.lane;
-        e.prevDepth = e.depth;
+      case 'pulsar':
+        updatePulsar(e, s, params, cfg);
         break;
     }
     if (!wasFlipping && e.flip !== null) {
@@ -384,6 +417,7 @@ function stepEnemyShotLethality(
 function stepContactLethality(
   s: SimState,
   cfg: GameConfig,
+  params: LevelParams,
   ctx: TickCtx,
   events: SimEvent[],
   benchMode: boolean,
@@ -400,7 +434,21 @@ function stepContactLethality(
       break;
     }
   }
-  void cfg;
+  // Pulse lethality (§6.5/§5(c)): during the pulse each PARTICIPATING
+  // Pulsar's lane is electrified along its full length for the whole
+  // duration — entering mid-pulse kills. A lane de-electrifies the instant
+  // its last participating Pulsar dies (step 3 removed it before we run).
+  if (
+    s.phase === 'PLAYING' &&
+    pulsePhase(s.pulseClock, params.pulse, cfg.tuning) === 'pulse'
+  ) {
+    for (const e of s.enemies) {
+      if (e.kind === 'pulsar' && e.pulseJoined === true && e.lane === pl) {
+        killPlayer(ctx, events);
+        break;
+      }
+    }
+  }
 }
 
 // Step 6 (§6): one bonus-life pass for the points steps 3–5 accumulated.
