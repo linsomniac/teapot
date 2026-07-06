@@ -11,9 +11,11 @@ medium+ addressed → box checked → commit.
 ---
 
 ## Phase 0 — Scaffold
-- [ ] 0.1 Toolchain + static bundle skeleton (Vite/TS-strict/Vitest/ESLint-9-flat/
+- [x] 0.1 Toolchain + static bundle skeleton (Vite/TS-strict/Vitest/ESLint-flat/
   Prettier, npm scripts incl. `check`, `.nvmrc` 24, `index.html` canvas, black page).
   **DoD:** `npm run dev`/`build`/`check` all succeed; `dist/` self-contained.
+  *(Built with the current majors: ESLint 10 flat config — C4's intent — TS 6,
+  Vite 8, Vitest 4.)*
 
 ## Phase 1 — Sim foundations (pure, no DOM)
 - [ ] 1.1 Core types (`sim/types.ts`).

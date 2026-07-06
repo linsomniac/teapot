@@ -63,7 +63,8 @@ The guide named `.eslintrc.cjs`, which is the legacy config format; ESLint 9
 built around it. Chose **flat config** so the toolchain is stock-modern; both
 purity rules (`no-restricted-properties` / `no-restricted-globals`, Task 0.1)
 express identically in flat config. Changed: guide repo layout + Task 0.1;
-checklist item 0.1.
+checklist item 0.1. *(Build note, Task 0.1: npm resolved ESLint 10 as current —
+still flat config, so the decision holds unchanged.)*
 
 ### C5. Node pin moved 22 → 24
 
