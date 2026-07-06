@@ -40,7 +40,7 @@ medium+ addressed → box checked → commit.
   monotonicity, pulse guard) (§8.1).
 
 ## Phase 3 — Sim entities & combat
-- [ ] 3.1 `SimState` + `createSim` + state-machine skeleton + first transitions (§10).
+- [x] 3.1 `SimState` + `createSim` + state-machine skeleton + first transitions (§10).
 - [ ] 3.2 Player movement + firing + shots (8-cap, fireInterval, auto-fire, despawn,
   clear-on-transition) (§5).
 - [ ] 3.3 Scoring + bonus-life rule (bands, clear bonus + cap, floor-based lives,
