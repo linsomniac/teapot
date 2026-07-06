@@ -181,11 +181,7 @@ export const DIFFICULTY: readonly DifficultyAnchor[] = Object.freeze([
   },
 ]);
 
-// Enemy introduction levels (§8.1): budgets are forced to 0 before these.
-export const INTRO_LEVEL = Object.freeze({
-  flipper: 1,
-  tanker: 3,
-  spiker: 4,
-  fuseball: 11,
-  pulsar: 17,
-});
+// Enemy introduction levels: canonical definition lives with the §8.1 rule
+// in sim/difficultyCurve.ts (spec structure, not tunable data); re-exported
+// here so table-structure tests read both from one place.
+export { INTRO_LEVEL } from '../difficultyCurve';

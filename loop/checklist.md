@@ -36,7 +36,7 @@ medium+ addressed → box checked → commit.
 ## Phase 2 — Sim core mechanics
 - [x] 2.1 Fixed-timestep stepper (0/1/N ticks, 250 ms clamp, alpha, carry) (§12.3).
 - [x] 2.2 Swept collision (no tunneling, depth-0 rim hit, boundaries) (§6.7).
-- [ ] 2.3 Difficulty interpolation (anchors, `—` cells, budgets gating, flat tail,
+- [x] 2.3 Difficulty interpolation (anchors, `—` cells, budgets gating, flat tail,
   monotonicity, pulse guard) (§8.1).
 
 ## Phase 3 — Sim entities & combat
