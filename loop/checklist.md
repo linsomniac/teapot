@@ -20,7 +20,7 @@ medium+ addressed → box checked → commit.
 ## Phase 1 — Sim foundations (pure, no DOM)
 - [x] 1.1 Core types (`sim/types.ts`).
 - [x] 1.2 Seedable RNG mulberry32 (`sim/rng.ts`) — same-seed determinism test.
-- [ ] 1.3 `GameConfig` types (spikeH/pulse `number|null` for `—` cells) +
+- [x] 1.3 `GameConfig` types (spikeH/pulse `number|null` for `—` cells) +
   `validateConfig` (anchor tuning-constraint guards) + author live data modules
   (tuning/difficulty/scoring) (§8.2/§8.3/§7).
 - [ ] 1.4 Lane math + player-lane rule (round=floor(x+.5), wrap/clamp, shortest-arc,
