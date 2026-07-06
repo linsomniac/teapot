@@ -10,7 +10,7 @@ import { makeRng } from './rng';
 import { geometryIndexForLevel, paletteIndexForLevel } from './levels';
 import { clampRimDelta, normalizeRimPos, playerLane } from './well';
 import { paramsForLevel, type LevelParams } from './difficultyCurve';
-import { advanceShots } from './enemies/shots';
+import { advanceShots, fireEnemyShots } from './enemies/shots';
 import { occupancyLane, updateFlipper } from './enemies/flipper';
 import { splitTanker, updateTanker } from './enemies/tanker';
 import { trimOrKill, updateSpiker } from './enemies/spiker';
@@ -225,6 +225,10 @@ function stepAdvanceEntities(
       s.enemies.push(...splitTanker(t, s, params, events));
     }
   }
+  // Enemy firing (§6): after movement, so eligibility (depth, mid-flip)
+  // reflects this tick's positions. Newly fired shots first advance next
+  // tick (prev === curr at spawn).
+  fireEnemyShots(s, params, cfg, events);
 }
 
 // Kill an enemy with a player shot (step 3): score by kill depth, emit the
@@ -400,15 +404,40 @@ function killPlayer(ctx: TickCtx, events: SimEvent[]): void {
   }
 }
 
+// Step 4 (§6/§6.6): an enemy shot crossing depth 0 on the player's lane
+// kills; on any other lane it disappears at the rim. In benchMode the
+// player is invulnerable but rim-crossing shots still despawn (they are
+// not part of the held census, §12.6).
+function stepEnemyShotLethality(
+  s: SimState,
+  cfg: GameConfig,
+  ctx: TickCtx,
+  events: SimEvent[],
+  benchMode: boolean,
+): void {
+  let crossed = false;
+  for (const es of s.enemyShots) {
+    if (es.depth <= 0) {
+      crossed = true;
+      break;
+    }
+  }
+  if (!crossed) return;
+  if (!benchMode) {
+    const pl = playerLane(s.rimPos, s.closed);
+    for (const es of s.enemyShots) {
+      if (es.depth <= 0 && es.lane === pl) {
+        killPlayer(ctx, events);
+        break;
+      }
+    }
+  }
+  s.enemyShots = s.enemyShots.filter((es) => es.depth > 0);
+  void cfg;
+}
+
 // AIDEV-TODO: each placeholder below is implemented by its named task
 // (underscore params mark deliberately-unused args until then).
-function stepEnemyShotLethality(
-  _s: SimState,
-  _cfg: GameConfig,
-  _ctx: TickCtx,
-  _events: SimEvent[],
-  _benchMode: boolean,
-): void {}
 // Step 5 (§6): contact, pulse, and warp-spike lethality. §5(b): the player
 // dies when their lane equals a NON-flipping rim-resident Flipper's (or
 // Fuseball's, Task 4.4) lane — symmetric contact; a mid-flip enemy is lethal

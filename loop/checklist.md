@@ -57,7 +57,7 @@ medium+ addressed → box checked → commit.
   symmetric rim contact, depth-banded score) (§6.4).
 - [x] 4.5 Pulsar + pulse clock (oscillate/never-rim/never-despawn, telegraph/pulse,
   participation, flip freeze, full-duration lethality, de-electrify on death) (§6.5).
-- [ ] 4.6 Enemy fire scheduler + enemy shots (eligibility, [0.5,1.5]×FireInt, MaxShots,
+- [x] 4.6 Enemy fire scheduler + enemy shots (eligibility, [0.5,1.5]×FireInt, MaxShots,
   rim-kill, shot-vs-shot 0 pts) (§6.6).
 - [ ] 4.7 Spawner (SpawnInt cadence, MaxOnWell excl. Spikers, weighted type, uniform
   lane w/ Spiker exclusion, budgets) (§6).
