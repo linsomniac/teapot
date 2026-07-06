@@ -37,13 +37,13 @@ describe('flip mechanics (§6)', () => {
   it('occupancy: source lane first half, destination second half', () => {
     const e = flipperAt(3, 0.5);
     startFlip(e, 4);
-    expect(occupancyLane(e)).toBe(3);
+    expect(occupancyLane(e, true)).toBe(3);
     e.flip!.progress = 0.49;
-    expect(occupancyLane(e)).toBe(3);
+    expect(occupancyLane(e, true)).toBe(3);
     e.flip!.progress = 0.5;
-    expect(occupancyLane(e)).toBe(4);
+    expect(occupancyLane(e, true)).toBe(4);
     e.flip = null;
-    expect(occupancyLane(e)).toBe(3); // back to its own lane
+    expect(occupancyLane(e, true)).toBe(3); // back to its own lane
   });
 
   it('advanceFlip completes after flipAnimTime and commits the lane', () => {

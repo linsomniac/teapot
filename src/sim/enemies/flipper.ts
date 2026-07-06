@@ -20,9 +20,13 @@ import { adjacentLane, playerLane, shortestArcDir } from '../well';
 // A flipping enemy occupies its source lane for the first half of the
 // animation and its destination lane for the second half — FOR SHOT
 // COLLISION ONLY (§6). Lethal contact happens only at completion (§5(b)).
-export function occupancyLane(e: Enemy): number {
-  if (!e.flip) return e.lane;
-  return e.flip.progress < 0.5 ? e.flip.from : e.flip.to;
+// Non-flipping lanes round like the player's (identity for integer lanes;
+// a crawling Fuseball's fractional rim position rounds per §6.4/§4).
+export function occupancyLane(e: Enemy, closed: boolean): number {
+  if (e.flip) {
+    return e.flip.progress < 0.5 ? e.flip.from : e.flip.to;
+  }
+  return playerLane(e.lane, closed);
 }
 
 export function startFlip(e: Enemy, toLane: number): void {

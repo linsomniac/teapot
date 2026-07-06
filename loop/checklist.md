@@ -53,7 +53,7 @@ medium+ addressed → box checked → commit.
   0-pt rim self-split) (§6.2).
 - [x] 4.3 Spiker + spikes (build/reverse/descend/re-emerge, one-per-lane, growth-only
   top, trim-vs-kill priority, shielding, not counted in MaxOnWell) (§6.3).
-- [ ] 4.4 Fuseball (0.3–1.5 jitter, temporary rim residency then descend to [0.6,1],
+- [x] 4.4 Fuseball (0.3–1.5 jitter, temporary rim residency then descend to [0.6,1],
   symmetric rim contact, depth-banded score) (§6.4).
 - [ ] 4.5 Pulsar + pulse clock (oscillate/never-rim/never-despawn, telegraph/pulse,
   participation, flip freeze, full-duration lethality, de-electrify on death) (§6.5).

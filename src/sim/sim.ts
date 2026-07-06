@@ -14,6 +14,7 @@ import { advanceShots } from './enemies/shots';
 import { occupancyLane, updateFlipper } from './enemies/flipper';
 import { splitTanker, updateTanker } from './enemies/tanker';
 import { trimOrKill, updateSpiker } from './enemies/spiker';
+import { updateFuseball } from './enemies/fuseball';
 import { sweptOverlap } from './collision';
 import { applyScore, pointsForKill } from './scoring';
 import { hashState } from './hash';
@@ -171,7 +172,10 @@ function stepAdvanceEntities(
       case 'spiker':
         updateSpiker(e, s, params, cfg);
         break;
-      // Tasks 4.4–4.5: fuseball, pulsar.
+      case 'fuseball':
+        updateFuseball(e, s, params, cfg);
+        break;
+      // Task 4.5: pulsar.
       default:
         e.prevLane = e.lane;
         e.prevDepth = e.depth;
@@ -205,7 +209,7 @@ function killEnemyByShot(
   events.push({
     type: 'enemyKilled',
     kind: e.kind,
-    lane: occupancyLane(e),
+    lane: occupancyLane(e, s.closed),
     depth: e.depth,
   });
   if (e.kind === 'tanker') {
@@ -241,7 +245,7 @@ function stepPlayerShotCollisions(
       let hitEnemy: Enemy | null = null;
       for (const e of s.enemies) {
         if (killedEnemies.has(e)) continue;
-        if (occupancyLane(e) !== shot.lane) continue;
+        if (occupancyLane(e, s.closed) !== shot.lane) continue;
         if (
           !sweptOverlap(
             shot.prevDepth,
@@ -389,8 +393,9 @@ function stepContactLethality(
   for (const e of s.enemies) {
     if (e.flip !== null) continue; // crossing a mid-flip lane is safe (§5(b))
     if (e.depth > 0) continue; // rim residents only
-    if (e.kind !== 'flipper') continue; // fuseball joins in Task 4.4
-    if (e.lane === pl) {
+    if (e.kind !== 'flipper' && e.kind !== 'fuseball') continue;
+    // A crawling Fuseball's lane rounds like the player's (§6.4).
+    if (occupancyLane(e, s.closed) === pl) {
       killPlayer(ctx, events);
       break;
     }
