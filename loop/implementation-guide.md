@@ -39,8 +39,9 @@ Every task inherits these (copied verbatim from the spec):
 - **The sim is constructed from an injected `GameConfig`**, never by importing the
   live data modules directly. (§12.2, D41, I4)
 - **`round` means `floor(x + 0.5)`** everywhere in the sim. (§4)
-- **Target platforms:** latest two of Chrome, Firefox, Edge, Safari desktop; ES2020+
-  output; playable and non-crashing at ≥ 1024×768 CSS px. (§12.5)
+- **Target platforms:** latest two of Chrome and Firefox desktop (Edge/Safari not
+  acceptance-gated in v1 — §12.5/§14.11, decision C1); ES2020+ output; playable and
+  non-crashing at ≥ 1024×768 CSS px. (§12.5)
 
 ---
 
@@ -73,7 +74,9 @@ sim state field that affects a later tick must be added to the state hash (§12.
 the hash-completeness test (Task 12.3) will fail otherwise.
 
 **Commits.** Conventional-commit style (`feat:`, `test:`, `fix:`, `chore:`),
-ending with the `Co-Authored-By` trailer. One commit per completed task.
+ending with the `Co-Authored-By` trailer. One commit per completed task,
+committed directly to `master` — no feature branches or PRs; the repo has no
+remote (decisions C6/C7).
 
 **Per-task Definition of Done.** (1) All the task's tests pass; (2) `npm run check`
 (typecheck + lint + test) is green; (3) `/codex-review` (or `codex exec`) run on the
@@ -92,8 +95,9 @@ teapot/
   tsconfig.json              # strict
   vite.config.ts
   vitest.config.ts
-  .eslintrc.cjs              # incl. sim-math + browser-API restriction rules
-  .nvmrc                     # Node 22 (I2)
+  eslint.config.js           # ESLint 9 flat config; incl. sim-math + browser-API
+                             #   restriction rules (decision C4)
+  .nvmrc                     # Node 24 (I2 as amended by decision C5)
   src/
     main.ts                  # bootstraps app/ (the only DOM entry)
     sim/                     # PURE — no browser APIs, engine-stable math
@@ -160,7 +164,7 @@ teapot/
 ### Task 0.1: Toolchain and static bundle skeleton
 
 **Files:** Create `package.json`, `tsconfig.json`, `vite.config.ts`,
-`vitest.config.ts`, `.eslintrc.cjs`, `.prettierrc`, `.nvmrc`, `index.html`,
+`vitest.config.ts`, `eslint.config.js`, `.prettierrc`, `.nvmrc`, `index.html`,
 `src/main.ts`.
 
 **Steps:**
@@ -169,12 +173,14 @@ teapot/
 - [ ] `package.json` scripts (I10): `dev`, `build`, `test`, `test:watch`,
   `typecheck`, `lint`, `check` (= `npm run typecheck && npm run lint && npm run test`).
   No `dependencies`, only `devDependencies`.
-- [ ] `.nvmrc` = `22`; `engines.node` = `>=22` (I2).
+- [ ] `.nvmrc` = `24`; `engines.node` = `>=24` (I2 as amended by decision C5 —
+  Node 24 is the active LTS and the version installed on the build machine).
 - [ ] `index.html`: a single full-viewport `<canvas id="game">`, black background,
   `<script type="module" src="/src/main.ts">`. Relative asset paths so `dist/` is
-  portable (§12.1).
+  portable (set Vite `base: './'`) (§12.1).
 - [ ] `src/main.ts`: for now, get the canvas and fill it black (placeholder).
-- [ ] ESLint config with `@typescript-eslint`, and **activate both purity rules now**
+- [ ] ESLint 9 **flat config** (`eslint.config.js`) with `typescript-eslint`
+  (decision C4), and **activate both purity rules now**
   so they guard sim code from Phase 1 onward (Task 12.4 later adds a fixture proving
   they fire): (a) `no-restricted-properties` forbidding `Math.sqrt/sin/cos/tan/atan2/
   pow/exp/log` under `src/sim/**` except `src/sim/projection.ts`; (b)
@@ -913,8 +919,12 @@ the next level.)
   lanes, ≤ 1 per UI-step interval, accumulator reset on emit and cleared on
   zero-cross/state entry (held-then-release emits no backlog); level-select opens at
   `max(9,maxLevelReached)`, clamps 1..max (no wrap); high-score entry over
-  space,A–Z,0–9 (default A, **wraps** at both ends), fire locks+advances, third fire →
-  TITLE, back returns a slot (**inert on the first slot**); TITLE click carve-out =
+  space,A–Z,0–9 (default A, **wraps** at both ends), confirm locks+advances, third
+  confirm → TITLE, back returns a slot (**inert on the first slot**). **All menu
+  states (TITLE/LEVEL_SELECT/HIGH_SCORE_ENTRY) act on the edge-triggered
+  `snapshot.confirm` intent — never the held `snapshot.fire` gameplay boolean** (§10
+  defines menu "confirm" as the fire button — space/Enter — but the *snapshot* carries
+  it as the one-per-press `confirm` edge; decision C10); TITLE click carve-out =
   confirm; qualification predicate (≤10, ties rank new above equal); **on
   TITLE→LEVEL_SELECT entry `selector` initializes to `max(9, maxLevelReached)`** (the
   default open value, §8.5) and `selectorAccum` clears. Commit.
@@ -1119,7 +1129,8 @@ Keep hot paths allocation-free (reuse buffers; I3).
   enemyShot, enemyKilled, playerDied, flip, superzap, spikeHit, pulseTelegraph,
   bonusLife, warpStart, uiMove/uiConfirm, highScoreJingle) — so audio/particles
   consume a tested stream, not just sim state. Commit. (Re-record golden only on
-  intentional rule changes / reviewed engine upgrade; CI pins Node — I2.)
+  intentional rule changes / reviewed engine upgrade; the Node pin is
+  `.nvmrc`/`engines` — I2/C5/C7; no hosted CI while the repo has no remote.)
 
 ### Task 12.3: Hash-completeness test + benchMode census-hold test
 **Files:** `src/__tests__/hashCompleteness.test.ts`, `src/__tests__/benchMode.test.ts`.
@@ -1164,17 +1175,27 @@ The rules themselves were activated in Task 0.1 and have guarded sim code all al
 - [ ] Walk every §15 criterion (1–12); confirm each maps to a green test or a checked
   manual/visual item. Fill the **manual browser-integration checklist** (§13) and the
   **visual identity checklist** (§15.12) per supported browser; run the **smoke pass**
-  (§13) in Chrome, Firefox, Edge, Safari; run `?bench=1` **in both latest Chrome and
-  latest Firefox** (the two distinct engines, §15.7) on the reference machine and
-  record each engine's mean/p95 work-time numbers + machine/display — both must meet
-  mean ≤ 12 ms / p95 ≤ 16 ms. Record results in `loop/acceptance-results.md`. Commit.
+  (§13) in Chrome and Firefox (the v1 acceptance browsers — §12.5, decision C1); run
+  `?bench=1` **in both latest Chrome and latest Firefox** (§15.7) on the recorded
+  reference machine (the i7-10750H dev machine, decision C2 — record CPU, GPU in use,
+  browser, and display) and record each engine's mean/p95 work-time numbers — both
+  must meet mean ≤ 12 ms / p95 ≤ 16 ms. Record results in `loop/acceptance-results.md`.
+  **Human-judgment vs automatable items (decision C3):** automate what a driven
+  browser can verify (Playwright — dev-only tooling, decision C8 — for the scripted
+  smoke run and for capturing the §15.12 screenshots); items needing human judgment
+  (per-SFX audible distinctness, game feel, final visual sign-off) are recorded in
+  `loop/acceptance-results.md` as **"pending human sign-off"** with exact steps, and
+  the build is code-complete with those items so recorded — they do not block
+  checking this box, but remain listed until the developer signs off. Commit.
 - [ ] Final `/codex-review` of the whole tree; address medium+ or record rejected.
-  Commit. **Definition of Done for the project:** all §15 criteria satisfied,
-  `npm run check` green, bench within budget, smoke pass clean in all four browsers.
+  Commit. **Definition of Done for the project:** all §15 criteria satisfied (with
+  human-judgment items recorded pending per C3), `npm run check` green, bench within
+  budget, smoke pass clean in Chrome and Firefox.
 
 #### Manual browser-integration checklist (maintained here per §13)
-Run per supported browser (Chrome, Firefox, Edge, Safari); record pass/fail +
-notes in `loop/acceptance-results.md`. These are behaviors unit tests cannot reach:
+Run per supported browser (Chrome, Firefox — §12.5/C1); record pass/fail +
+notes in `loop/acceptance-results.md`. These are behaviors unit tests cannot reach
+(automate via a driven browser where possible; judgment items pend per C3):
 - [ ] Pointer lock engages on canvas click during PLAYING/GET_READY/WARP; the
   engaging click does not fire a shot.
 - [ ] Escape while locked auto-pauses (driven by `pointerlockchange`, not the

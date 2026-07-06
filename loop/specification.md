@@ -753,7 +753,12 @@ Pure logic is separated from I/O so game rules are unit-testable without a DOM:
   gracefully — the game runs, nothing persists, no errors surface to the player.
 
 ### 12.5 Browser support
-Latest two stable versions of Chrome, Firefox, Edge, and Safari on desktop.
+Latest two stable versions of Chrome and Firefox on desktop (the two distinct
+engines — Blink/V8 and Gecko/SpiderMonkey). Edge and Safari are expected to
+work (Edge shares Chrome's engine; the code keeps its Safari-defensive paths,
+e.g. AudioContext 'interrupted' recovery and the pointer-lock fallbacks) but
+are **not acceptance-gated in v1** — verifying them is future work (§14.11;
+clarifying decision C1, `loop/impl-clarifying.md`).
 No polyfills; ES2020+ output. The playfield letterboxes and remains fully
 playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not crash.
 
@@ -943,7 +948,8 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
   Superzapper state, and entity census for debuggability. Because the
   parameters are frozen, live tuning does not invalidate the golden; it is
   re-recorded only for intentional rule changes (or a reviewed engine upgrade —
-  CI pins the Node version), with the diff reviewed. A companion test asserts
+  the Node version is pinned via `.nvmrc`/`engines`, and by CI if the repo
+  gains one; decision C7, `loop/impl-clarifying.md`), with the diff reviewed. A companion test asserts
   self-consistency: two runs of the same seed + script produce identical
   per-tick state hashes (valid across any tuning). A **hash-completeness test**
   guards the hash itself: it mutates each category of sim state (an entity
@@ -989,6 +995,9 @@ and `loop/spec-rejected-concerns.md`):
 8. Online leaderboards, accounts, telemetry, or any network I/O.
 9. Configurable key bindings and sensitivity settings (fixed in v1).
 10. Music.
+11. Edge and Safari acceptance verification (v1 gates on Chrome and Firefox
+    only — §12.5; the Safari-defensive code paths are kept, but no Edge/Safari
+    smoke pass is required; decision C1, `loop/impl-clarifying.md`).
 
 ## 15. Acceptance criteria
 
@@ -1015,11 +1024,12 @@ the §13 smoke pass completes in that browser.
 6. Starting-level selection offers 1..max(9, maxLevelReached); high scores,
    mute state, and maxLevelReached survive reload; corrupt or unavailable
    storage neither crashes the game nor surfaces errors to the player.
-7. **Performance:** on a 2020-class x86 laptop with integrated graphics (no
-   discrete GPU; record the actual machine, browser, and display in the
-   acceptance notes), in the latest Chrome and Firefox — the two distinct
-   engines (Edge shares Chrome's Blink/V8, so Chrome stands in for it; Safari
-   is covered by the smoke pass, not this timing gate) — the `?bench=1` run
+7. **Performance:** on a 2020-class x86 laptop CPU (integrated graphics
+   expected; record the actual machine, GPU in use, browser, and display in
+   the acceptance notes — the project's recorded reference machine is the
+   i7-10750H dev machine, decision C2 in `loop/impl-clarifying.md`), in the
+   latest Chrome and Firefox — the two supported engines (§12.5) — the
+   `?bench=1` run
    (§12.6, maximum-legal-load census at the fixed 2880×2160 backing store)
    reports mean per-frame **work time** ≤ 12 ms and p95 ≤ 16 ms. Dropped-frame
    statistics are informational only.

@@ -18,6 +18,12 @@ Spec §12.3/§13 require the golden replay to be stable on "the same JS
 engine/build" and CI to pin the Node version. Chose Node 22 (active LTS as of
 2026). Recorded in `.nvmrc` and `package.json` `engines.node`.
 
+*Amended by decision C5 (`loop/impl-clarifying.md`, 2026-07-06):* the pin is now
+**Node 24** — the active LTS and the version installed on the build machine
+(v24.16.0). `.nvmrc` = `24`, `engines.node` = `>=24`. Rationale unchanged: one
+pinned engine for the golden replay. C7 records that there is no hosted CI while
+the repo has no remote; `npm run check` is the local gate.
+
 ## I3. Entity storage: array-of-structs with object pools
 
 Enemies, shots, and particles are plain objects held in arrays, each carrying

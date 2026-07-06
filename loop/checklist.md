@@ -11,8 +11,8 @@ medium+ addressed → box checked → commit.
 ---
 
 ## Phase 0 — Scaffold
-- [ ] 0.1 Toolchain + static bundle skeleton (Vite/TS-strict/Vitest/ESLint/Prettier,
-  npm scripts incl. `check`, `.nvmrc` 22, `index.html` canvas, black page).
+- [ ] 0.1 Toolchain + static bundle skeleton (Vite/TS-strict/Vitest/ESLint-9-flat/
+  Prettier, npm scripts incl. `check`, `.nvmrc` 24, `index.html` canvas, black page).
   **DoD:** `npm run dev`/`build`/`check` all succeed; `dist/` self-contained.
 
 ## Phase 1 — Sim foundations (pure, no DOM)
@@ -72,7 +72,8 @@ medium+ addressed → box checked → commit.
 
 ## Phase 6 — State machine completion
 - [ ] 6.1 Title/level-select/high-score navigation (selector steps + reset, clamp,
-  default level, entry loop, click carve-out, qualification) (§10).
+  default level, entry loop via edge-triggered `confirm` (C10), click carve-out,
+  qualification) (§10).
 - [ ] 6.2 Quit-to-title + **full transition test** (every §10 edge incl. quit from
   PLAYING/GET_READY/WARP, and no others) (§10).
 
@@ -113,10 +114,12 @@ medium+ addressed → box checked → commit.
 ## Phase 13 — Acceptance
 - [ ] 13.1 §15 criteria pass: every criterion → green test or checked manual/visual
   item; manual browser-integration checklist + visual-identity checklist per browser;
-  smoke pass in Chrome/Firefox/Edge/Safari; `?bench=1` within budget on the recorded
-  reference machine; final `/codex-review`; results in `loop/acceptance-results.md`.
-  **PROJECT DoD:** all §15 criteria met, `npm run check` green, bench in budget,
-  smoke pass clean in all four browsers.
+  smoke pass in Chrome/Firefox (v1 acceptance browsers, C1); `?bench=1` within budget
+  on the recorded reference machine (the dev machine, C2); human-judgment items
+  recorded "pending human sign-off" (C3); final `/codex-review`; results in
+  `loop/acceptance-results.md`.
+  **PROJECT DoD:** all §15 criteria met (judgment items pending per C3),
+  `npm run check` green, bench in budget, smoke pass clean in Chrome + Firefox.
 
 ---
 
