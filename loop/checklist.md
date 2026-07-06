@@ -59,7 +59,7 @@ medium+ addressed → box checked → commit.
   participation, flip freeze, full-duration lethality, de-electrify on death) (§6.5).
 - [x] 4.6 Enemy fire scheduler + enemy shots (eligibility, [0.5,1.5]×FireInt, MaxShots,
   rim-kill, shot-vs-shot 0 pts) (§6.6).
-- [ ] 4.7 Spawner (SpawnInt cadence, MaxOnWell excl. Spikers, weighted type, uniform
+- [x] 4.7 Spawner (SpawnInt cadence, MaxOnWell excl. Spikers, weighted type, uniform
   lane w/ Spiker exclusion, budgets) (§6).
 
 ## Phase 5 — Progression, warp, Superzapper, death

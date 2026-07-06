@@ -16,6 +16,7 @@ import { splitTanker, updateTanker } from './enemies/tanker';
 import { trimOrKill, updateSpiker } from './enemies/spiker';
 import { updateFuseball } from './enemies/fuseball';
 import { pulsePhase, updatePulsar } from './enemies/pulsar';
+import { updateSpawner } from './spawner';
 import { sweptOverlap } from './collision';
 import { applyScore, pointsForKill } from './scoring';
 import { hashState } from './hash';
@@ -105,7 +106,7 @@ function tickCombat(
   stepEnemyShotLethality(s, cfg, ctx, events, benchMode); // 4 (Task 4.6)
   stepContactLethality(s, cfg, params, ctx, events, benchMode); // 5 (Tasks 4.x/5.2)
   stepBonusLife(s, cfg, ctx, events); // 6 (Task 3.3)
-  stepSpawner(s, cfg, events); // 7 (Task 4.7)
+  stepSpawner(s, cfg, params, events); // 7 (Task 4.7)
   stepWaveCompletion(s, cfg, ctx, events, benchMode); // 8 (Task 5.1)
   // 9: state transitions — runs for every phase in tick() below.
 }
@@ -490,11 +491,17 @@ function stepBonusLife(
   applyScore(s, ctx.points, cfg, ctx.playerDied, events);
 }
 
+// Step 7 (§6): spawn attempts run on PLAYING time only (WARP has no
+// spawner — the wave is already complete).
 function stepSpawner(
-  _s: SimState,
-  _cfg: GameConfig,
-  _events: SimEvent[],
-): void {}
+  s: SimState,
+  cfg: GameConfig,
+  params: LevelParams,
+  events: SimEvent[],
+): void {
+  if (s.phase !== 'PLAYING') return;
+  updateSpawner(s, params, cfg, events);
+}
 function stepWaveCompletion(
   _s: SimState,
   _cfg: GameConfig,
