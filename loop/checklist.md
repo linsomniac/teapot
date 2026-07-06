@@ -41,7 +41,7 @@ medium+ addressed → box checked → commit.
 
 ## Phase 3 — Sim entities & combat
 - [x] 3.1 `SimState` + `createSim` + state-machine skeleton + first transitions (§10).
-- [ ] 3.2 Player movement + firing + shots (8-cap, fireInterval, auto-fire, despawn,
+- [x] 3.2 Player movement + firing + shots (8-cap, fireInterval, auto-fire, despawn,
   clear-on-transition) (§5).
 - [ ] 3.3 Scoring + bonus-life rule (bands, clear bonus + cap, floor-based lives,
   same-tick life+death nets zero) (§7).

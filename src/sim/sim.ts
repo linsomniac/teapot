@@ -2,11 +2,15 @@
 // injected GameConfig + seed (+ optional InitialSave, I14) and advances ONLY
 // via tick(inputSnapshot) — no browser APIs, no wall clock, no entropy.
 
+import { TICK_SEC } from './types';
 import type { InputSnapshot, SimEvent } from './types';
 import type { GameConfig } from './config';
 import { validateConfig } from './config';
 import { makeRng } from './rng';
 import { geometryIndexForLevel, paletteIndexForLevel } from './levels';
+import { clampRimDelta, normalizeRimPos, playerLane } from './well';
+import { paramsForLevel, type LevelParams } from './difficultyCurve';
+import { advanceShots } from './enemies/shots';
 import { hashState } from './hash';
 import {
   maxStartLevel,
@@ -82,8 +86,9 @@ function tickCombat(
   events: SimEvent[],
   benchMode: boolean,
 ): void {
+  const params = paramsForLevel(s.level, cfg.difficulty);
   stepApplyInput(s, input, cfg, events); // 1 (Task 3.2)
-  stepAdvanceEntities(s, cfg, events); // 2 (Tasks 3.2/4.x)
+  stepAdvanceEntities(s, cfg, params, events); // 2 (Tasks 3.2/4.x)
   stepPlayerShotCollisions(s, cfg, events, benchMode); // 3 (Tasks 3.2/4.x)
   stepEnemyShotLethality(s, cfg, events, benchMode); // 4 (Task 4.6)
   stepContactLethality(s, cfg, events, benchMode); // 5 (Tasks 4.x/5.2)
@@ -93,26 +98,68 @@ function tickCombat(
   // 9: state transitions — runs for every phase in tick() below.
 }
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-// AIDEV-TODO: each placeholder below is implemented by its named task
-// (underscore params keep noUnusedParameters quiet until then).
+// Step 1 (§6): apply the input snapshot — movement, fire, zap.
 function stepApplyInput(
-  _s: SimState,
-  _input: InputSnapshot,
-  _cfg: GameConfig,
-  _events: SimEvent[],
-): void {}
+  s: SimState,
+  input: InputSnapshot,
+  cfg: GameConfig,
+  events: SimEvent[],
+): void {
+  // Movement: input.move arrives pre-clamped by the input layer (§12.3);
+  // re-clamp defensively so no snapshot can ever skip a lane (§4).
+  const delta = clampRimDelta(input.move, cfg.tuning.perTickClamp);
+  s.rimPos = normalizeRimPos(s.rimPos + delta, s.closed);
+
+  // Firing (§5): one shot per fireInterval, ≤ maxPlayerShots in flight;
+  // holding fire auto-fires at the cap. Shots spawn at the player's current
+  // depth — 0 in PLAYING, the Blaster's descent depth during WARP.
+  s.fireCooldown = Math.max(0, s.fireCooldown - TICK_SEC);
+  if (
+    input.fire &&
+    s.fireCooldown <= 0 &&
+    s.playerShots.length < cfg.tuning.maxPlayerShots
+  ) {
+    const lane = playerLane(s.rimPos, s.closed);
+    const depth = s.phase === 'WARP' ? s.warpDepth : 0;
+    s.playerShots.push({ lane, depth, prevDepth: depth });
+    s.fireCooldown = cfg.tuning.fireInterval;
+    events.push({ type: 'playerShot' });
+  }
+
+  // Zap: Task 5.4.
+}
+
+// Step 2 (§6): advance all entities and shots.
 function stepAdvanceEntities(
-  _s: SimState,
-  _cfg: GameConfig,
-  _events: SimEvent[],
-): void {}
+  s: SimState,
+  cfg: GameConfig,
+  params: LevelParams,
+  events: SimEvent[],
+): void {
+  advanceShots(s.playerShots, cfg.tuning.shotSpeed, 1); // rim → bottom
+  advanceShots(s.enemyShots, params.eshot, -1); // bottom → rim
+  // Enemy movement: Tasks 4.1–4.5.
+  void events;
+}
+
+// Step 3 (§6): player-shot collisions. The nearest-target single-pass
+// resolution framework lands with the first shootable target (Task 4.1);
+// until then only the bottom-despawn rule applies.
 function stepPlayerShotCollisions(
-  _s: SimState,
+  s: SimState,
   _cfg: GameConfig,
   _events: SimEvent[],
   _benchMode: boolean,
-): void {}
+): void {
+  // §5: a shot that reaches depth 1 without hitting anything despawns.
+  // Runs AFTER hit resolution so an exactly-at-bottom hit still lands.
+  if (s.playerShots.some((sh) => sh.depth >= 1)) {
+    s.playerShots = s.playerShots.filter((sh) => sh.depth < 1);
+  }
+}
+
+// AIDEV-TODO: each placeholder below is implemented by its named task
+// (underscore params mark deliberately-unused args until then).
 function stepEnemyShotLethality(
   _s: SimState,
   _cfg: GameConfig,
@@ -141,7 +188,6 @@ function stepWaveCompletion(
   _events: SimEvent[],
   _benchMode: boolean,
 ): void {}
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
 function makeSim(s: SimState, cfg: GameConfig, benchMode: boolean): Sim {
   return {

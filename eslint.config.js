@@ -56,6 +56,16 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   prettier,
   {
+    // Underscore-prefixed params mark deliberately-unused arguments (e.g. the
+    // tick-pipeline step placeholders that later tasks fill in).
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  {
     // Purity: no browser APIs / wall clock / entropy in sim, persist, input map.
     files: PURE_PATHS,
     rules: {

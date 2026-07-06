@@ -128,9 +128,18 @@ function enterHighScoreEntry(s: SimState): void {
   s.selectorTimer = 0;
 }
 
+// §6: all shots (both sides) are cleared on every sim state transition
+// (death, wave completion, level start, game over). beginLevel covers level
+// start; death/wave transitions call this directly (Tasks 5.x).
+export function clearAllShots(s: SimState): void {
+  s.playerShots = [];
+  s.enemyShots = [];
+}
+
 export function enterGameOver(s: SimState, cfg: GameConfig): void {
   s.phase = 'GAME_OVER';
   s.beatTimer = cfg.tuning.gameOverBeat;
+  clearAllShots(s);
 }
 
 // §10 transitions — step 9 of the tick order. Menu states act ONLY on the
