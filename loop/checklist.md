@@ -26,7 +26,7 @@ medium+ addressed → box checked → commit.
 - [x] 1.4 Lane math + player-lane rule (round=floor(x+.5), wrap/clamp, shortest-arc,
   per-tick clamp) **+ level→geometry/palette mapping** (`(N-1)mod16`,
   `floor((N-1)/16)mod6` across levels 1–112) (§4).
-- [ ] 1.5 16 well geometries + **structural** validation (16 lanes, winding,
+- [x] 1.5 16 well geometries + **structural** validation (16 lanes, winding,
   no self-intersection; 0–7 closed, 8–15 open — no projection) (§4).
 - [ ] 1.6 Projection math (depth-0→rim, monotone toward vanishing, all 16) **+
   projected-lane-width geometry check (≥24 px)** (§11.1/§4).
