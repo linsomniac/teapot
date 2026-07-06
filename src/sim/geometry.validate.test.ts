@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GEOMETRIES } from './data/geometries';
 import { geometryIndexForLevel } from './levels';
+import { laneWidthAtRim } from './projection';
 import type { Vec2 } from './config';
 
 // §13 geometry-validation area, structural half (no projection — the
@@ -149,6 +150,16 @@ describe('well geometry structural validation (§4)', () => {
     for (const g of GEOMETRIES) {
       const seen = new Set(g.rim.map((v) => `${v.x},${v.y}`));
       expect(seen.size, `geometry ${g.index}`).toBe(g.rim.length);
+    }
+  });
+
+  // Task 1.6 extension — completes the §4 geometry-validation area.
+  it('min projected rim lane width ≥ 24 px at 1440×1080 (all 16)', () => {
+    for (const g of GEOMETRIES) {
+      expect(
+        laneWidthAtRim(g, { width: 1440, height: 1080 }),
+        `geometry ${g.index}`,
+      ).toBeGreaterThanOrEqual(24);
     }
   });
 });

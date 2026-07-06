@@ -28,7 +28,7 @@ medium+ addressed → box checked → commit.
   `floor((N-1)/16)mod6` across levels 1–112) (§4).
 - [x] 1.5 16 well geometries + **structural** validation (16 lanes, winding,
   no self-intersection; 0–7 closed, 8–15 open — no projection) (§4).
-- [ ] 1.6 Projection math (depth-0→rim, monotone toward vanishing, all 16) **+
+- [x] 1.6 Projection math (depth-0→rim, monotone toward vanishing, all 16) **+
   projected-lane-width geometry check (≥24 px)** (§11.1/§4).
   **DoD (phase):** all §13 lane/level-mapping/projection/geometry/config test areas
   green.
