@@ -18,7 +18,7 @@ medium+ addressed → box checked → commit.
   Vite 8, Vitest 4.)*
 
 ## Phase 1 — Sim foundations (pure, no DOM)
-- [ ] 1.1 Core types (`sim/types.ts`).
+- [x] 1.1 Core types (`sim/types.ts`).
 - [ ] 1.2 Seedable RNG mulberry32 (`sim/rng.ts`) — same-seed determinism test.
 - [ ] 1.3 `GameConfig` types (spikeH/pulse `number|null` for `—` cells) +
   `validateConfig` (anchor tuning-constraint guards) + author live data modules
