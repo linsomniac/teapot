@@ -47,7 +47,7 @@ medium+ addressed → box checked → commit.
   same-tick life+death nets zero) (§7).
 
 ## Phase 4 — Enemies
-- [ ] 4.1 Flip mechanics + Flipper (seek/random targeting, depth-freeze, occupancy
+- [x] 4.1 Flip mechanics + Flipper (seek/random targeting, depth-freeze, occupancy
   halves, rim chase, timer transitions) (§6/§6.1).
 - [ ] 4.2 Tanker (split → 2 Flippers, end-lane stagger, ignores MaxOnWell, non-lethal
   0-pt rim self-split) (§6.2).

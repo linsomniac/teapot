@@ -3,7 +3,7 @@
 // via tick(inputSnapshot) — no browser APIs, no wall clock, no entropy.
 
 import { TICK_SEC } from './types';
-import type { InputSnapshot, SimEvent } from './types';
+import type { Enemy, InputSnapshot, Shot, SimEvent } from './types';
 import type { GameConfig } from './config';
 import { validateConfig } from './config';
 import { makeRng } from './rng';
@@ -11,7 +11,9 @@ import { geometryIndexForLevel, paletteIndexForLevel } from './levels';
 import { clampRimDelta, normalizeRimPos, playerLane } from './well';
 import { paramsForLevel, type LevelParams } from './difficultyCurve';
 import { advanceShots } from './enemies/shots';
-import { applyScore } from './scoring';
+import { occupancyLane, updateFlipper } from './enemies/flipper';
+import { sweptOverlap } from './collision';
+import { applyScore, pointsForKill } from './scoring';
 import { hashState } from './hash';
 import {
   maxStartLevel,
@@ -149,24 +151,144 @@ function stepAdvanceEntities(
 ): void {
   advanceShots(s.playerShots, cfg.tuning.shotSpeed, 1); // rim → bottom
   advanceShots(s.enemyShots, params.eshot, -1); // bottom → rim
-  // Enemy movement: Tasks 4.1–4.5.
-  void events;
+  for (const e of s.enemies) {
+    const wasFlipping = e.flip !== null;
+    switch (e.kind) {
+      case 'flipper':
+        updateFlipper(e, s, params, cfg);
+        break;
+      // Tasks 4.2–4.5: tanker, spiker, fuseball, pulsar.
+      default:
+        e.prevLane = e.lane;
+        e.prevDepth = e.depth;
+        break;
+    }
+    if (!wasFlipping && e.flip !== null) {
+      events.push({ type: 'flip' });
+    }
+  }
 }
 
-// Step 3 (§6): player-shot collisions. The nearest-target single-pass
-// resolution framework lands with the first shootable target (Task 4.1);
-// until then only the bottom-despawn rule applies.
+// Kill an enemy with a player shot (step 3): score by kill depth, emit the
+// death event. Per-kind on-kill behavior (Tanker split, Task 4.2) hooks in
+// here.
+function killEnemyByShot(
+  s: SimState,
+  e: Enemy,
+  cfg: GameConfig,
+  ctx: TickCtx,
+  events: SimEvent[],
+): void {
+  ctx.points += pointsForKill(e.kind, e.depth, cfg.scoring);
+  events.push({
+    type: 'enemyKilled',
+    kind: e.kind,
+    lane: occupancyLane(e),
+    depth: e.depth,
+  });
+  void s;
+}
+
+// Step 3 (§6): player-shot collisions — the single per-shot nearest-target
+// resolution pass. Each shot picks the nearest-depth target on its lane
+// (enemy, enemy shot, or spike tip — Task 4.3) and is CONSUMED by it; it
+// never pierces (§6). Per-enemy tasks plug their entities into this one
+// pass. benchMode (census-hold, §12.6): enemies are invulnerable — the
+// whole resolution is skipped.
 function stepPlayerShotCollisions(
   s: SimState,
-  _cfg: GameConfig,
-  _ctx: TickCtx,
-  _events: SimEvent[],
-  _benchMode: boolean,
+  cfg: GameConfig,
+  ctx: TickCtx,
+  events: SimEvent[],
+  benchMode: boolean,
 ): void {
+  if (!benchMode && s.playerShots.length > 0) {
+    const he = cfg.tuning.halfExtents;
+    const killedEnemies = new Set<Enemy>();
+    const killedShots = new Set<Shot>();
+    const consumed = new Set<Shot>();
+
+    for (const shot of s.playerShots) {
+      // Nearest-depth surviving enemy on the shot's occupancy lane.
+      let hitEnemy: Enemy | null = null;
+      for (const e of s.enemies) {
+        if (killedEnemies.has(e)) continue;
+        if (occupancyLane(e) !== shot.lane) continue;
+        if (
+          !sweptOverlap(
+            shot.prevDepth,
+            shot.depth,
+            he.shot,
+            e.prevDepth,
+            e.depth,
+            he.enemy,
+          )
+        ) {
+          continue;
+        }
+        if (hitEnemy === null || e.depth < hitEnemy.depth) hitEnemy = e;
+      }
+      // Nearest-depth surviving enemy shot on the lane (shot-vs-shot, §6.6).
+      let hitShot: Shot | null = null;
+      for (const es of s.enemyShots) {
+        if (killedShots.has(es)) continue;
+        if (es.lane !== shot.lane) continue;
+        if (
+          !sweptOverlap(
+            shot.prevDepth,
+            shot.depth,
+            he.shot,
+            es.prevDepth,
+            es.depth,
+            he.shot,
+          )
+        ) {
+          continue;
+        }
+        if (hitShot === null || es.depth < hitShot.depth) hitShot = es;
+      }
+      // Spike tip: Task 4.3 plugs in here.
+
+      // First thing hit = the overlapping candidate nearest the rim (the
+      // shot travels rim → bottom).
+      if (
+        hitEnemy !== null &&
+        (hitShot === null || hitEnemy.depth <= hitShot.depth)
+      ) {
+        killedEnemies.add(hitEnemy);
+        consumed.add(shot);
+        killEnemyByShot(s, hitEnemy, cfg, ctx, events);
+      } else if (hitShot !== null) {
+        killedShots.add(hitShot);
+        consumed.add(shot);
+        ctx.points += cfg.scoring.enemyShot; // 0 by canon (§7)
+      }
+    }
+
+    if (killedEnemies.size > 0) {
+      s.enemies = s.enemies.filter((e) => !killedEnemies.has(e));
+    }
+    if (killedShots.size > 0) {
+      s.enemyShots = s.enemyShots.filter((es) => !killedShots.has(es));
+    }
+    if (consumed.size > 0) {
+      s.playerShots = s.playerShots.filter((sh) => !consumed.has(sh));
+    }
+  }
+
   // §5: a shot that reaches depth 1 without hitting anything despawns.
   // Runs AFTER hit resolution so an exactly-at-bottom hit still lands.
   if (s.playerShots.some((sh) => sh.depth >= 1)) {
     s.playerShots = s.playerShots.filter((sh) => sh.depth < 1);
+  }
+}
+
+// Shared player-death entry for lethality steps 4–5 (Task 5.3 wires the
+// life decrement + transition). At most one death per tick.
+function killPlayer(ctx: TickCtx, events: SimEvent[]): void {
+  if (!ctx.playerDied) {
+    ctx.playerDied = true;
+    events.push({ type: 'playerDied' });
   }
 }
 
@@ -179,13 +301,31 @@ function stepEnemyShotLethality(
   _events: SimEvent[],
   _benchMode: boolean,
 ): void {}
+// Step 5 (§6): contact, pulse, and warp-spike lethality. §5(b): the player
+// dies when their lane equals a NON-flipping rim-resident Flipper's (or
+// Fuseball's, Task 4.4) lane — symmetric contact; a mid-flip enemy is lethal
+// only once its flip completes (it is non-flipping by this step). Pulse
+// lethality: Task 4.5; warp spikes: Task 5.2.
 function stepContactLethality(
-  _s: SimState,
-  _cfg: GameConfig,
-  _ctx: TickCtx,
-  _events: SimEvent[],
-  _benchMode: boolean,
-): void {}
+  s: SimState,
+  cfg: GameConfig,
+  ctx: TickCtx,
+  events: SimEvent[],
+  benchMode: boolean,
+): void {
+  if (benchMode) return; // census-hold: player is invulnerable (§12.6)
+  const pl = playerLane(s.rimPos, s.closed);
+  for (const e of s.enemies) {
+    if (e.flip !== null) continue; // crossing a mid-flip lane is safe (§5(b))
+    if (e.depth > 0) continue; // rim residents only
+    if (e.kind !== 'flipper') continue; // fuseball joins in Task 4.4
+    if (e.lane === pl) {
+      killPlayer(ctx, events);
+      break;
+    }
+  }
+  void cfg;
+}
 
 // Step 6 (§6): one bonus-life pass for the points steps 3–5 accumulated.
 function stepBonusLife(
