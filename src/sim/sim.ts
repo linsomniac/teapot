@@ -12,6 +12,7 @@ import { clampRimDelta, normalizeRimPos, playerLane } from './well';
 import { paramsForLevel, type LevelParams } from './difficultyCurve';
 import { advanceShots } from './enemies/shots';
 import { occupancyLane, updateFlipper } from './enemies/flipper';
+import { splitTanker, updateTanker } from './enemies/tanker';
 import { sweptOverlap } from './collision';
 import { applyScore, pointsForKill } from './scoring';
 import { hashState } from './hash';
@@ -96,8 +97,8 @@ function tickCombat(
   // life-decrement + GET_READY transition).
   const ctx: TickCtx = { points: 0, playerDied: false };
   stepApplyInput(s, input, cfg, events); // 1 (Task 3.2)
-  stepAdvanceEntities(s, cfg, params, events); // 2 (Tasks 3.2/4.x)
-  stepPlayerShotCollisions(s, cfg, ctx, events, benchMode); // 3 (Tasks 3.2/4.x)
+  stepAdvanceEntities(s, cfg, params, events, benchMode); // 2 (Tasks 3.2/4.x)
+  stepPlayerShotCollisions(s, cfg, params, ctx, events, benchMode); // 3 (Tasks 3.2/4.x)
   stepEnemyShotLethality(s, cfg, ctx, events, benchMode); // 4 (Task 4.6)
   stepContactLethality(s, cfg, ctx, events, benchMode); // 5 (Tasks 4.x/5.2)
   stepBonusLife(s, cfg, ctx, events); // 6 (Task 3.3)
@@ -148,16 +149,25 @@ function stepAdvanceEntities(
   cfg: GameConfig,
   params: LevelParams,
   events: SimEvent[],
+  benchMode: boolean,
 ): void {
   advanceShots(s.playerShots, cfg.tuning.shotSpeed, 1); // rim → bottom
   advanceShots(s.enemyShots, params.eshot, -1); // bottom → rim
+  let rimSplitTankers: Enemy[] | null = null;
   for (const e of s.enemies) {
     const wasFlipping = e.flip !== null;
     switch (e.kind) {
       case 'flipper':
         updateFlipper(e, s, params, cfg);
         break;
-      // Tasks 4.2–4.5: tanker, spiker, fuseball, pulsar.
+      case 'tanker':
+        if (updateTanker(e, params, cfg) && !benchMode) {
+          // Rim self-split (§6.2): non-lethal, scores 0. Suppressed in
+          // benchMode so the census composition holds (§12.6).
+          (rimSplitTankers ??= []).push(e);
+        }
+        break;
+      // Tasks 4.3–4.5: spiker, fuseball, pulsar.
       default:
         e.prevLane = e.lane;
         e.prevDepth = e.depth;
@@ -165,6 +175,13 @@ function stepAdvanceEntities(
     }
     if (!wasFlipping && e.flip !== null) {
       events.push({ type: 'flip' });
+    }
+  }
+  if (rimSplitTankers !== null) {
+    const splitting = new Set(rimSplitTankers);
+    s.enemies = s.enemies.filter((e) => !splitting.has(e));
+    for (const t of rimSplitTankers) {
+      s.enemies.push(...splitTanker(t, s, params, events));
     }
   }
 }
@@ -176,6 +193,7 @@ function killEnemyByShot(
   s: SimState,
   e: Enemy,
   cfg: GameConfig,
+  params: LevelParams,
   ctx: TickCtx,
   events: SimEvent[],
 ): void {
@@ -186,7 +204,12 @@ function killEnemyByShot(
     lane: occupancyLane(e),
     depth: e.depth,
   });
-  void s;
+  if (e.kind === 'tanker') {
+    // Shot split (§6.2): the released Flippers join the well immediately —
+    // shootable on the Tanker's lane during their first flip halves, even
+    // by another shot this same tick.
+    s.enemies.push(...splitTanker(e, s, params, events));
+  }
 }
 
 // Step 3 (§6): player-shot collisions — the single per-shot nearest-target
@@ -198,6 +221,7 @@ function killEnemyByShot(
 function stepPlayerShotCollisions(
   s: SimState,
   cfg: GameConfig,
+  params: LevelParams,
   ctx: TickCtx,
   events: SimEvent[],
   benchMode: boolean,
@@ -257,7 +281,7 @@ function stepPlayerShotCollisions(
       ) {
         killedEnemies.add(hitEnemy);
         consumed.add(shot);
-        killEnemyByShot(s, hitEnemy, cfg, ctx, events);
+        killEnemyByShot(s, hitEnemy, cfg, params, ctx, events);
       } else if (hitShot !== null) {
         killedShots.add(hitShot);
         consumed.add(shot);
