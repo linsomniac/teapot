@@ -51,7 +51,7 @@ medium+ addressed → box checked → commit.
   halves, rim chase, timer transitions) (§6/§6.1).
 - [x] 4.2 Tanker (split → 2 Flippers, end-lane stagger, ignores MaxOnWell, non-lethal
   0-pt rim self-split) (§6.2).
-- [ ] 4.3 Spiker + spikes (build/reverse/descend/re-emerge, one-per-lane, growth-only
+- [x] 4.3 Spiker + spikes (build/reverse/descend/re-emerge, one-per-lane, growth-only
   top, trim-vs-kill priority, shielding, not counted in MaxOnWell) (§6.3).
 - [ ] 4.4 Fuseball (0.3–1.5 jitter, temporary rim residency then descend to [0.6,1],
   symmetric rim contact, depth-banded score) (§6.4).

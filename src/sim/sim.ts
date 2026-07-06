@@ -3,7 +3,7 @@
 // via tick(inputSnapshot) — no browser APIs, no wall clock, no entropy.
 
 import { TICK_SEC } from './types';
-import type { Enemy, InputSnapshot, Shot, SimEvent } from './types';
+import type { Enemy, InputSnapshot, Shot, SimEvent, Spike } from './types';
 import type { GameConfig } from './config';
 import { validateConfig } from './config';
 import { makeRng } from './rng';
@@ -13,6 +13,7 @@ import { paramsForLevel, type LevelParams } from './difficultyCurve';
 import { advanceShots } from './enemies/shots';
 import { occupancyLane, updateFlipper } from './enemies/flipper';
 import { splitTanker, updateTanker } from './enemies/tanker';
+import { trimOrKill, updateSpiker } from './enemies/spiker';
 import { sweptOverlap } from './collision';
 import { applyScore, pointsForKill } from './scoring';
 import { hashState } from './hash';
@@ -167,7 +168,10 @@ function stepAdvanceEntities(
           (rimSplitTankers ??= []).push(e);
         }
         break;
-      // Tasks 4.3–4.5: spiker, fuseball, pulsar.
+      case 'spiker':
+        updateSpiker(e, s, params, cfg);
+        break;
+      // Tasks 4.4–4.5: fuseball, pulsar.
       default:
         e.prevLane = e.lane;
         e.prevDepth = e.depth;
@@ -271,21 +275,64 @@ function stepPlayerShotCollisions(
         }
         if (hitShot === null || es.depth < hitShot.depth) hitShot = es;
       }
-      // Spike tip: Task 4.3 plugs in here.
+      // Spike tip on the lane (§6.3) — at most one spike per lane.
+      let hitSpike: Spike | null = null;
+      for (const sp of s.spikes) {
+        if (sp.lane !== shot.lane) continue;
+        if (
+          sweptOverlap(
+            shot.prevDepth,
+            shot.depth,
+            he.shot,
+            sp.topDepth,
+            sp.topDepth,
+            he.spikeTop,
+          )
+        ) {
+          hitSpike = sp;
+        }
+        break;
+      }
 
       // First thing hit = the overlapping candidate nearest the rim (the
-      // shot travels rim → bottom).
-      if (
-        hitEnemy !== null &&
-        (hitShot === null || hitEnemy.depth <= hitShot.depth)
-      ) {
+      // shot travels rim → bottom). Ties: enemy beats enemy shot beats
+      // spike tip — a Spiker exactly at its tip has hit priority (§6.3).
+      const enemyD = hitEnemy?.depth ?? Infinity;
+      const shotD = hitShot?.depth ?? Infinity;
+      const spikeD = hitSpike?.topDepth ?? Infinity;
+      if (hitEnemy !== null && enemyD <= shotD && enemyD <= spikeD) {
         killedEnemies.add(hitEnemy);
         consumed.add(shot);
         killEnemyByShot(s, hitEnemy, cfg, params, ctx, events);
-      } else if (hitShot !== null) {
+      } else if (hitShot !== null && shotD <= spikeD) {
         killedShots.add(hitShot);
         consumed.add(shot);
         ctx.points += cfg.scoring.enemyShot; // 0 by canon (§7)
+      } else if (hitSpike !== null) {
+        // §6.3: a Spiker at or above the tip dies instead of a trim.
+        let spikerAtTip: Enemy | null = null;
+        for (const e of s.enemies) {
+          if (killedEnemies.has(e)) continue;
+          if (e.kind !== 'spiker' || e.lane !== shot.lane) continue;
+          if (e.depth <= hitSpike.topDepth) {
+            spikerAtTip = e;
+            break;
+          }
+        }
+        consumed.add(shot);
+        if (
+          trimOrKill(hitSpike, spikerAtTip, cfg.tuning.spikeTrimDepth) ===
+          'kill'
+        ) {
+          killedEnemies.add(spikerAtTip!);
+          killEnemyByShot(s, spikerAtTip!, cfg, params, ctx, events);
+        } else {
+          ctx.points += cfg.scoring.spikeTrimPoints;
+          events.push({ type: 'spikeHit' });
+          if (hitSpike.topDepth >= 1 - 1e-9) {
+            s.spikes = s.spikes.filter((sp) => sp !== hitSpike);
+          }
+        }
       }
     }
 
