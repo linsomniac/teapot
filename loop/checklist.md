@@ -23,7 +23,7 @@ medium+ addressed → box checked → commit.
 - [x] 1.3 `GameConfig` types (spikeH/pulse `number|null` for `—` cells) +
   `validateConfig` (anchor tuning-constraint guards) + author live data modules
   (tuning/difficulty/scoring) (§8.2/§8.3/§7).
-- [ ] 1.4 Lane math + player-lane rule (round=floor(x+.5), wrap/clamp, shortest-arc,
+- [x] 1.4 Lane math + player-lane rule (round=floor(x+.5), wrap/clamp, shortest-arc,
   per-tick clamp) **+ level→geometry/palette mapping** (`(N-1)mod16`,
   `floor((N-1)/16)mod6` across levels 1–112) (§4).
 - [ ] 1.5 16 well geometries + **structural** validation (16 lanes, winding,
