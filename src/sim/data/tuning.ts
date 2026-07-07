@@ -9,7 +9,8 @@ export const TUNING: Tuning = Object.freeze({
   mouseSensitivity: 50, // px per lane (pointer-locked)
   perTickClamp: 0.45, // lanes/tick; must stay < 0.5 (§4)
   shotSpeed: 1.5, // depth/s (player)
-  fireInterval: 0.18, // s; must stay > D40 floor (~0.162 s) — validateConfig
+  fireInterval: 0.2, // s; must stay > D40 floor (~0.162 s) — validateConfig.
+  // Raised 0.18→0.2 by the Task 12.5 anti-camping tuning loop (D44).
   maxPlayerShots: 8,
   flipAnimTime: 0.25, // s
   rimFlipFactor: 0.5, // rimFlipInterval = 0.5 × FlipInt
@@ -39,7 +40,10 @@ export const TUNING: Tuning = Object.freeze({
   startingLives: 3,
   getReadyDuration: 1.5, // s
   gameOverBeat: 2.0, // s
-  flipSeekBias: 0.5, // fraction of mid-well flips that seek the player
+  flipSeekBias: 0.35, // fraction of mid-well flips that seek the player.
+  // Lowered 0.5→0.35 by the Task 12.5 anti-camping tuning loop (D39/D44):
+  // at 0.5 too many enemies funneled into the camper's own firing lane
+  // mid-well instead of reaching the rim on other lanes.
   uiStepInterval: 0.15, // s; max one selector step per interval (§8.3)
   particlePoolCap: 256, // render-side max live particles (§12.6 bench census)
 });

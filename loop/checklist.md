@@ -110,7 +110,7 @@ medium+ addressed → box checked → commit.
 - [x] 12.3 Hash-completeness test (mutate each category → hash changes) + benchMode
   census-hold test (invulnerable, no despawn, count held) (§12.2/§12.6/§13).
 - [x] 12.4 ESLint sim-math + browser-API purity rules fire (§12.3/§12.2).
-- [ ] 12.5 Anti-camping test (both topologies, median<60 s) + economy-invariant test
+- [x] 12.5 Anti-camping test (both topologies, median<60 s) + economy-invariant test
   (§13/D30/D44).
 
 ## Phase 13 — Acceptance
