@@ -174,8 +174,15 @@ export function startApp(canvas: HTMLCanvasElement): void {
       }
       if (s.phase !== lastPhase) {
         capture.notifyPhase(s.phase); // exits held pointer lock off-play (§5)
-        if (s.phase === 'TITLE' || s.phase === 'GAME_OVER') {
-          persistNow(); // the run's scores/maxLevelReached land on disk
+        if (
+          s.phase === 'TITLE' ||
+          s.phase === 'GAME_OVER' ||
+          s.phase === 'PLAYING'
+        ) {
+          // TITLE/GAME_OVER: the run's scores land on disk. PLAYING entry:
+          // §8.5 records maxLevelReached when a level BEGINS PLAY — persist
+          // right away so closing the tab mid-run keeps the unlock.
+          persistNow();
         }
         lastPhase = s.phase;
       }
