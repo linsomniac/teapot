@@ -69,7 +69,7 @@ medium+ addressed → box checked → commit.
   WARP→PLAYING/GAME_OVER) + **descent-fairness simulated test** (§9).
 - [x] 5.3 GET_READY + death/respawn (budget-return by type, shots cleared, persist
   spikes/score/rim, input rules, last-life→GAME_OVER, same-tick kill+death) (§5/§10).
-- [ ] 5.4 Superzapper (FULL/PARTIAL/EMPTY, all-kill no-split, nearest-rim 2nd use,
+- [x] 5.4 Superzapper (FULL/PARTIAL/EMPTY, all-kill no-split, nearest-rim 2nd use,
   empty-well consumes, PLAYING-only, reset at level, death-persist) (§5).
 
 ## Phase 6 — State machine completion

@@ -17,6 +17,7 @@ import { trimOrKill, updateSpiker } from './enemies/spiker';
 import { updateFuseball } from './enemies/fuseball';
 import { pulsePhase, updatePulsar } from './enemies/pulsar';
 import { updateSpawner } from './spawner';
+import { activateSuperzapper } from './superzapper';
 import { sweptOverlap } from './collision';
 import { applyScore, levelClearBonus, pointsForKill } from './scoring';
 import { hashState } from './hash';
@@ -98,7 +99,7 @@ function tickCombat(
   benchMode: boolean,
 ): void {
   const params = paramsForLevel(s.level, cfg.difficulty);
-  stepApplyInput(s, input, cfg, events); // 1 (Task 3.2)
+  stepApplyInput(s, input, cfg, events, benchMode); // 1 (Task 3.2)
   stepAdvanceEntities(s, cfg, params, events, benchMode); // 2 (Tasks 3.2/4.x)
   stepPlayerShotCollisions(s, cfg, params, ctx, events, benchMode); // 3 (Tasks 3.2/4.x)
   stepEnemyShotLethality(s, cfg, ctx, events, benchMode); // 4 (Task 4.6)
@@ -120,6 +121,7 @@ function stepApplyInput(
   input: InputSnapshot,
   cfg: GameConfig,
   events: SimEvent[],
+  benchMode: boolean,
 ): void {
   // Movement: input.move arrives pre-clamped by the input layer (§12.3);
   // re-clamp defensively so no snapshot can ever skip a lane (§4).
@@ -142,7 +144,12 @@ function stepApplyInput(
     events.push({ type: 'playerShot' });
   }
 
-  // Zap: Task 5.4.
+  // Superzapper (§5): accepted only in the PLAYING state — not GET_READY
+  // (no combat pipeline there) and not WARP (this step runs for WARP too).
+  // benchMode holds the census (§12.6): zap is a kill path, so it no-ops.
+  if (input.zap && s.phase === 'PLAYING' && !benchMode) {
+    activateSuperzapper(s, events);
+  }
 }
 
 // Step 2 (§6): advance all entities and shots.
