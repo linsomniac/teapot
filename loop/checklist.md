@@ -99,7 +99,7 @@ medium+ addressed → box checked → commit.
   (§5). *(browser-integration verified via manual checklist in 13.1)*
 
 ## Phase 11 — App wiring
-- [ ] 11.1 localStorage adapter with graceful degradation (§12.4).
+- [x] 11.1 localStorage adapter with graceful degradation (§12.4).
 - [ ] 11.2 rAF loop + app-layer pause overlay + quit + seed provenance (§12.3/§10/D19).
 - [ ] 11.3 Bench mode (fixed 2880×2160, max-legal census, mean/p95 work time) + F3
   overlay (§12.6).
