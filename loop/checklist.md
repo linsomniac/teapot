@@ -91,7 +91,7 @@ medium+ addressed → box checked → commit.
 - [x] 8.4 HUD + all screens + AVOID-SPIKES flash + warp zoom (§10/§11.1).
 
 ## Phase 9 — Audio
-- [ ] 9.1 AudioContext lifecycle + synthesized SFX per event + mute (§11.2).
+- [x] 9.1 AudioContext lifecycle + synthesized SFX per event + mute (§11.2).
 
 ## Phase 10 — Input
 - [ ] 10.1 Pure snapshot mapping + multi-tick apportionment test (§12.2/§12.3).
