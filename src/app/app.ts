@@ -23,6 +23,7 @@ import { attachCapture } from '../input/capture';
 import { createStorage } from './storage';
 import { createPause, drawPauseOverlay } from './pause';
 import { startLoop } from './loop';
+import { createFrameStats, drawFrameTimeOverlay } from './bench';
 
 const PLAY_PHASES: readonly Phase[] = ['PLAYING', 'GET_READY', 'WARP'];
 
@@ -60,7 +61,10 @@ export function startApp(canvas: HTMLCanvasElement): void {
   const pause = createPause();
   let lastPhase: Phase = sim.getState().phase;
   let pendingLockResume = false;
-  let fpsOverlay = false; // F3 (drawing lands with the bench, Task 11.3)
+  let fpsOverlay = false; // F3 frame-time overlay (§12.6)
+  let workStats = createFrameStats(); // rolling ~2 s window
+  let workStatsShown = workStats;
+  let frameWorkStart: number | null = null;
 
   function persistNow(): void {
     const s = sim.getState();
@@ -150,6 +154,7 @@ export function startApp(canvas: HTMLCanvasElement): void {
   const loop = startLoop({
     paused: () => pause.paused(),
     simTick(): void {
+      if (frameWorkStart === null) frameWorkStart = performance.now();
       const input = buildSnapshot(inputState, cfg.tuning);
       const { events } = sim.tick(input);
       const s = sim.getState();
@@ -170,13 +175,23 @@ export function startApp(canvas: HTMLCanvasElement): void {
         pause.setHint(false);
         doResume();
       }
+      const t0 = frameWorkStart ?? performance.now();
+      frameWorkStart = null;
       const v = view.view();
       renderer.frame(v, sim.getState(), alpha, dtSec, audio.muted());
       if (pause.paused()) {
         drawPauseOverlay(v, pause.hint(), lowGlow);
       }
-      // F3 frame-time overlay: Task 11.3.
-      void fpsOverlay;
+      // Per-frame WORK time (ticks + render) for the F3 overlay (§12.6),
+      // over a rolling ~2 s window.
+      workStats.push(performance.now() - t0);
+      if (workStats.count() >= 120) {
+        workStatsShown = workStats;
+        workStats = createFrameStats();
+      }
+      if (fpsOverlay) {
+        drawFrameTimeOverlay(v, workStatsShown, lowGlow);
+      }
     },
   });
 }

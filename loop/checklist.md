@@ -101,7 +101,7 @@ medium+ addressed → box checked → commit.
 ## Phase 11 — App wiring
 - [x] 11.1 localStorage adapter with graceful degradation (§12.4).
 - [x] 11.2 rAF loop + app-layer pause overlay + quit + seed provenance (§12.3/§10/D19).
-- [ ] 11.3 Bench mode (fixed 2880×2160, max-legal census, mean/p95 work time) + F3
+- [x] 11.3 Bench mode (fixed 2880×2160, max-legal census, mean/p95 work time) + F3
   overlay (§12.6).
 
 ## Phase 12 — Integration, determinism, lint gates
