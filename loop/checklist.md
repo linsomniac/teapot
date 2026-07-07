@@ -95,7 +95,7 @@ medium+ addressed → box checked → commit.
 
 ## Phase 10 — Input
 - [x] 10.1 Pure snapshot mapping + multi-tick apportionment test (§12.2/§12.3).
-- [ ] 10.2 DOM capture + pointer-lock lifecycle + consumed clicks + accumulator clear
+- [x] 10.2 DOM capture + pointer-lock lifecycle + consumed clicks + accumulator clear
   (§5). *(browser-integration verified via manual checklist in 13.1)*
 
 ## Phase 11 — App wiring
