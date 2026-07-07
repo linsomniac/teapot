@@ -80,7 +80,7 @@ medium+ addressed → box checked → commit.
   PLAYING/GET_READY/WARP, and no others) (§10).
 
 ## Phase 7 — Persistence
-- [ ] 7.1 Save schema (round-trip, corrupt/missing/wrong-shape defaults, qualification,
+- [x] 7.1 Save schema (round-trip, corrupt/missing/wrong-shape defaults, qualification,
   top-10) (§12.4).
 
 ## Phase 8 — Rendering (verified by §15 checklist + smoke pass, not unit tests)
