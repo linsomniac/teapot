@@ -5,8 +5,21 @@
 //
 // AIDEV-NOTE: "add to the hash as you go" (I16): every task that adds a
 // future-affecting SimState/Enemy field MUST extend serializeState in the
-// same commit. Task 12.1 audits this; Task 12.3's hash-completeness test
-// fails if a field is missed.
+// same commit. Task 12.3's hash-completeness test fails if a field is
+// missed.
+//
+// Task 12.1 audit (2026-07-06, final SimState shape): every §12.2 field is
+// serialized — phase, level, score, lives, livesGranted, rimPos, warpDepth,
+// closed, geometryIndex, superzapper, spawnTimer, pulseClock, getReadyTimer,
+// beatTimer, fireCooldown, maxLevelReached, selector(+accum/timer), hsSlot,
+// hsInitials, all five budgets, rng.state(); per-Enemy kind/lane/depth/flip
+// (from>to@progress)/flipTimer/fireTimer/climbDir/rimTimer/rimDir/
+// jitterTimer/speedMul/descentTarget/pulseJoined; per-shot lane/depth both
+// sides; per-spike lane/topDepth; the high-score table. Shot.prevDepth is
+// overwritten by advanceShots before any use each tick, so between ticks it
+// is render-only, like the other excluded prev* fields. paletteIndex is
+// hashed but derives from level (render-only per §12.2's exclusion list —
+// harmless to include).
 
 import type { SimState } from './state';
 
