@@ -85,7 +85,7 @@ medium+ addressed → box checked → commit.
 
 ## Phase 8 — Rendering (verified by §15 checklist + smoke pass, not unit tests)
 - [x] 8.1 Canvas/viewport/DPR-2/letterbox + additive glow + stroke font (§11.1/D22).
-- [ ] 8.2 Well + player-lane highlight + fractional claw + tween/teleport (§11.1).
+- [x] 8.2 Well + player-lane highlight + fractional claw + tween/teleport (§11.1).
 - [ ] 8.3 Per-type enemy silhouettes/colors + dimmed band + flip rotation + distinct
   player/enemy shots + Superzapper full-screen FX + particles (§11.1/D35).
 - [ ] 8.4 HUD + all screens + AVOID-SPIKES flash + warp zoom (§10/§11.1).
