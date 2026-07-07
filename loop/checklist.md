@@ -106,7 +106,7 @@ medium+ addressed → box checked → commit.
 
 ## Phase 12 — Integration, determinism, lint gates
 - [x] 12.1 State hash (all future-affecting fields) (§12.2).
-- [ ] 12.2 Golden replay + self-consistency (frozen config, scripted inputs) (§13).
+- [x] 12.2 Golden replay + self-consistency (frozen config, scripted inputs) (§13).
 - [ ] 12.3 Hash-completeness test (mutate each category → hash changes) + benchMode
   census-hold test (invulnerable, no despawn, count held) (§12.2/§12.6/§13).
 - [ ] 12.4 ESLint sim-math + browser-API purity rules fire (§12.3/§12.2).
