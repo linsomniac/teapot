@@ -79,14 +79,15 @@ export function drawClaw(
   g: Geometry,
   vp: Viewport,
   rimPos: number,
+  depth: number, // 0 at the rim; the warp descent draws it deeper (§9)
   color: string,
   lowGlow: boolean,
 ): void {
-  const left = project(rimPos - 0.5, 0, g, vp);
-  const right = project(rimPos + 0.5, 0, g, vp);
-  const outer = project(rimPos, -0.045, g, vp); // just outside the rim
-  const innerL = project(rimPos - 0.25, -0.015, g, vp);
-  const innerR = project(rimPos + 0.25, -0.015, g, vp);
+  const left = project(rimPos - 0.5, depth, g, vp);
+  const right = project(rimPos + 0.5, depth, g, vp);
+  const outer = project(rimPos, depth - 0.045, g, vp); // just above/outside
+  const innerL = project(rimPos - 0.25, depth - 0.015, g, vp);
+  const innerR = project(rimPos + 0.25, depth - 0.015, g, vp);
   ctx.beginPath();
   ctx.moveTo(left.x, left.y);
   ctx.lineTo(innerL.x, innerL.y);

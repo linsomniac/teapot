@@ -88,7 +88,7 @@ medium+ addressed → box checked → commit.
 - [x] 8.2 Well + player-lane highlight + fractional claw + tween/teleport (§11.1).
 - [x] 8.3 Per-type enemy silhouettes/colors + dimmed band + flip rotation + distinct
   player/enemy shots + Superzapper full-screen FX + particles (§11.1/D35).
-- [ ] 8.4 HUD + all screens + AVOID-SPIKES flash + warp zoom (§10/§11.1).
+- [x] 8.4 HUD + all screens + AVOID-SPIKES flash + warp zoom (§10/§11.1).
 
 ## Phase 9 — Audio
 - [ ] 9.1 AudioContext lifecycle + synthesized SFX per event + mute (§11.2).

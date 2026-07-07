@@ -14,6 +14,15 @@ import { pulsePhase } from '../sim/enemies/pulsar';
 import type { CanvasView } from './canvas';
 import { bandColors, CLAW_COLOR } from './palette';
 import { drawClaw, drawLaneHighlight, drawWell } from './well';
+import { drawHud } from './hud';
+import {
+  drawAvoidSpikes,
+  drawGameOver,
+  drawGetReady,
+  drawHighScoreEntry,
+  drawLevelSelect,
+  drawTitle,
+} from './screens';
 import {
   drawEnemy,
   drawShots,
@@ -36,12 +45,14 @@ export interface Renderer {
     s: Readonly<SimState>,
     view: CanvasView,
   ): void;
-  // Draw one frame; dtSec is the wall-clock frame delta for render-side FX.
+  // Draw one frame; dtSec is the wall-clock frame delta for render-side FX;
+  // muted drives the title-screen mute indicator (§10).
   frame(
     view: CanvasView,
     s: Readonly<SimState>,
     alpha: number,
     dtSec: number,
+    muted: boolean,
   ): void;
   particles(): ParticleSystem;
 }
@@ -120,7 +131,7 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
       }
     },
 
-    frame(view, s, alpha, dtSec): void {
+    frame(view, s, alpha, dtSec, muted): void {
       const { ctx, playfield } = view;
       dc.frame++;
       particles.update(dtSec);
@@ -132,12 +143,29 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
       ctx.save();
       ctx.translate(playfield.x, playfield.y);
       const pvp = playfieldVp(view);
+      const colors = bandColors(s.paletteIndex);
 
       if (IN_WELL_PHASES.has(s.phase)) {
         const g = cfg.geometries[s.geometryIndex]!;
-        const colors = bandColors(s.paletteIndex);
-        drawWell(ctx, g, pvp, colors.well, opts.lowGlow);
+        const wd = s.prevWarpDepth + (s.warpDepth - s.prevWarpDepth) * alpha;
 
+        // Warp zoom (§11.1, criterion 12(g)): scale the whole well toward
+        // the vanishing point as warpDepth advances — the rim shrinks into
+        // the screen and the descent reads as flying down the tube.
+        let zoomK = 1;
+        let zoomVanX = 0;
+        let zoomVanY = 0;
+        if (s.phase === 'WARP') {
+          const vs = Math.min(pvp.width / 1440, pvp.height / 1080);
+          zoomVanX = pvp.width / 2 + g.vanishing.x * vs;
+          zoomVanY = pvp.height / 2 + g.vanishing.y * vs;
+          zoomK = 1 - 0.55 * wd;
+          ctx.translate(zoomVanX, zoomVanY);
+          ctx.scale(zoomK, zoomK);
+          ctx.translate(-zoomVanX, -zoomVanY);
+        }
+
+        drawWell(ctx, g, pvp, colors.well, opts.lowGlow);
         drawSpikes(ctx, s.spikes, g, pvp, opts.lowGlow);
 
         if (
@@ -148,10 +176,14 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
           const lane = playerLane(s.rimPos, s.closed);
           drawLaneHighlight(ctx, g, pvp, lane, colors.highlight, opts.lowGlow);
           const rim = interpRim(s.prevRimPos, s.rimPos, alpha, s.closed);
-          drawClaw(ctx, g, pvp, rim, CLAW_COLOR, opts.lowGlow);
-          const clawPoint = project(rim, s.warpDepth, g, pvp);
-          lastPlayerPos.x = playfield.x + clawPoint.x;
-          lastPlayerPos.y = playfield.y + clawPoint.y;
+          drawClaw(ctx, g, pvp, rim, wd, CLAW_COLOR, opts.lowGlow);
+          // Cache where the claw was actually DRAWN — through the warp
+          // zoom transform when active — for death-burst anchoring.
+          const clawPoint = project(rim, wd, g, pvp);
+          const drawnX = zoomVanX + (clawPoint.x - zoomVanX) * zoomK;
+          const drawnY = zoomVanY + (clawPoint.y - zoomVanY) * zoomK;
+          lastPlayerPos.x = playfield.x + drawnX;
+          lastPlayerPos.y = playfield.y + drawnY;
           lastPlayerPos.valid = true;
         }
 
@@ -184,6 +216,37 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
 
       ctx.restore();
 
+      // HUD + screens draw un-zoomed, over the well (§10/§11.1).
+      switch (s.phase) {
+        case 'TITLE':
+          drawTitle(ctx, playfield, s, colors, muted, opts.lowGlow);
+          break;
+        case 'LEVEL_SELECT':
+          drawLevelSelect(ctx, playfield, s, colors, opts.lowGlow);
+          break;
+        case 'HIGH_SCORE_ENTRY':
+          drawHighScoreEntry(ctx, playfield, s, colors, dc.frame, opts.lowGlow);
+          break;
+        case 'GET_READY':
+          drawHud(ctx, playfield, s, colors, opts.lowGlow);
+          drawGetReady(ctx, playfield, opts.lowGlow);
+          break;
+        case 'GAME_OVER':
+          drawHud(ctx, playfield, s, colors, opts.lowGlow);
+          drawGameOver(ctx, playfield, opts.lowGlow);
+          break;
+        case 'WARP':
+          drawHud(ctx, playfield, s, colors, opts.lowGlow);
+          // Flashes at descent start while spikes remain (§9).
+          if (s.spikes.length > 0 && s.warpDepth < 0.35) {
+            drawAvoidSpikes(ctx, playfield, dc.frame, opts.lowGlow);
+          }
+          break;
+        case 'PLAYING':
+          drawHud(ctx, playfield, s, colors, opts.lowGlow);
+          break;
+      }
+
       // Particles live in canvas coordinates (they outlive well transforms).
       particles.draw(ctx, opts.lowGlow);
 
@@ -210,8 +273,6 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
         strokeWithGlow(ctx, '#ffffff', 2, opts.lowGlow);
         ctx.restore();
       }
-
-      // HUD + screens: Task 8.4.
     },
 
     particles: () => particles,
