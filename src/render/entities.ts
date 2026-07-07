@@ -95,24 +95,24 @@ function placeEnemy(
 }
 
 function pathBowtie(ctx: CanvasRenderingContext2D, s: number): void {
-  ctx.moveTo(-s, -s * 0.6);
-  ctx.lineTo(0, 0);
-  ctx.lineTo(-s, s * 0.6);
-  ctx.lineTo(-s, -s * 0.6);
-  ctx.moveTo(s, -s * 0.6);
-  ctx.lineTo(0, 0);
-  ctx.lineTo(s, s * 0.6);
-  ctx.lineTo(s, -s * 0.6);
+  tMove(ctx, -s, -s * 0.6);
+  tLine(ctx, 0, 0);
+  tLine(ctx, -s, s * 0.6);
+  tLine(ctx, -s, -s * 0.6);
+  tMove(ctx, s, -s * 0.6);
+  tLine(ctx, 0, 0);
+  tLine(ctx, s, s * 0.6);
+  tLine(ctx, s, -s * 0.6);
 }
 
 function pathDiamond(ctx: CanvasRenderingContext2D, s: number): void {
-  ctx.moveTo(0, -s * 0.9);
-  ctx.lineTo(s * 0.9, 0);
-  ctx.lineTo(0, s * 0.9);
-  ctx.lineTo(-s * 0.9, 0);
-  ctx.lineTo(0, -s * 0.9);
-  ctx.moveTo(-s * 0.45, 0);
-  ctx.lineTo(s * 0.45, 0);
+  tMove(ctx, 0, -s * 0.9);
+  tLine(ctx, s * 0.9, 0);
+  tLine(ctx, 0, s * 0.9);
+  tLine(ctx, -s * 0.9, 0);
+  tLine(ctx, 0, -s * 0.9);
+  tMove(ctx, -s * 0.45, 0);
+  tLine(ctx, s * 0.45, 0);
 }
 
 function pathSpiral(
@@ -128,8 +128,8 @@ function pathSpiral(
     const r = t * s;
     const x = Math.cos(ang) * r;
     const y = Math.sin(ang) * r;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+    if (i === 0) tMove(ctx, x, y);
+    else tLine(ctx, x, y);
   }
 }
 
@@ -142,19 +142,19 @@ function pathSparks(
   for (let i = 0; i < arms; i++) {
     const ang = (i / arms) * 2 * Math.PI + seed;
     const len = s * (0.5 + 0.5 * Math.abs(Math.sin(seed * 3 + i * 1.7)));
-    ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(ang) * len, Math.sin(ang) * len);
+    tMove(ctx, 0, 0);
+    tLine(ctx, Math.cos(ang) * len, Math.sin(ang) * len);
   }
 }
 
 function pathZigzagCoil(ctx: CanvasRenderingContext2D, s: number): void {
   const teeth = 4;
-  ctx.moveTo(-s, 0);
+  tMove(ctx, -s, 0);
   for (let i = 0; i < teeth; i++) {
     const x0 = -s + ((i + 0.5) / teeth) * 2 * s;
     const x1 = -s + ((i + 1) / teeth) * 2 * s;
-    ctx.lineTo(x0, i % 2 === 0 ? -s * 0.6 : s * 0.6);
-    ctx.lineTo(x1, 0);
+    tLine(ctx, x0, i % 2 === 0 ? -s * 0.6 : s * 0.6);
+    tLine(ctx, x1, 0);
   }
 }
 
@@ -163,50 +163,111 @@ export interface EnemyDrawContext {
   pulsarFlash: number; // 0..1 — cyan→white mix during the telegraph
 }
 
-export function drawEnemy(
+// Emission transform shared by the batched paths: rotate about the origin
+// then translate — one path per KIND per frame (a stroke pair per kind
+// instead of per enemy: per-stroke fixed cost dominates on CPU-raster
+// engines, see the Task 13.1 bench bisect).
+interface Xform {
+  x: number;
+  y: number;
+  cos: number;
+  sin: number;
+  size: number;
+}
+
+const xf: Xform = { x: 0, y: 0, cos: 1, sin: 0, size: 1 };
+
+function tMove(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+  ctx.moveTo(
+    xf.x + px * xf.cos - py * xf.sin,
+    xf.y + px * xf.sin + py * xf.cos,
+  );
+}
+function tLine(ctx: CanvasRenderingContext2D, px: number, py: number): void {
+  ctx.lineTo(
+    xf.x + px * xf.cos - py * xf.sin,
+    xf.y + px * xf.sin + py * xf.cos,
+  );
+}
+
+function setXform(p: Placement): void {
+  xf.x = p.x;
+  xf.y = p.y;
+  xf.cos = Math.cos(p.angle);
+  xf.sin = Math.sin(p.angle);
+  xf.size = p.size;
+}
+
+function pathKind(
   ctx: CanvasRenderingContext2D,
   e: Enemy,
+  dc: EnemyDrawContext,
+): void {
+  const s = xf.size;
+  switch (e.kind) {
+    case 'flipper':
+      pathBowtie(ctx, s);
+      break;
+    case 'tanker':
+      pathDiamond(ctx, s);
+      break;
+    case 'spiker':
+      pathSpiral(ctx, s * 0.9, dc.frame * 0.15);
+      break;
+    case 'fuseball':
+      pathSparks(ctx, s, dc.frame * 0.21);
+      break;
+    case 'pulsar':
+      pathZigzagCoil(ctx, s);
+      break;
+  }
+}
+
+// Draw ALL enemies in at most six stroke pairs: one per kind, plus a
+// separate pass for flashing (participating) Pulsars during the telegraph.
+export function drawEnemies(
+  ctx: CanvasRenderingContext2D,
+  enemies: readonly Enemy[],
   g: Geometry,
   vp: Viewport,
   alpha: number,
   dc: EnemyDrawContext,
   lowGlow: boolean,
 ): void {
-  const p = placeEnemy(e, g, vp, alpha);
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.rotate(p.angle);
-  ctx.beginPath();
-  let color: string;
-  switch (e.kind) {
-    case 'flipper':
-      pathBowtie(ctx, p.size);
-      color = ENEMY_COLORS.flipper;
-      break;
-    case 'tanker':
-      pathDiamond(ctx, p.size);
-      color = ENEMY_COLORS.tanker;
-      break;
-    case 'spiker':
-      pathSpiral(ctx, p.size * 0.9, dc.frame * 0.15);
-      color = ENEMY_COLORS.spiker;
-      break;
-    case 'fuseball':
-      pathSparks(ctx, p.size, dc.frame * 0.21);
-      color = FUSEBALL_COLORS[dc.frame % FUSEBALL_COLORS.length]!;
-      break;
-    case 'pulsar': {
-      pathZigzagCoil(ctx, p.size);
+  const groups: {
+    match(e: Enemy): boolean;
+    color(): string;
+  }[] = [
+    { match: (e) => e.kind === 'flipper', color: () => ENEMY_COLORS.flipper },
+    { match: (e) => e.kind === 'tanker', color: () => ENEMY_COLORS.tanker },
+    { match: (e) => e.kind === 'spiker', color: () => ENEMY_COLORS.spiker },
+    {
+      match: (e) => e.kind === 'fuseball',
+      color: () => FUSEBALL_COLORS[dc.frame % FUSEBALL_COLORS.length]!,
+    },
+    {
       // Only PARTICIPATING Pulsars flash — a late spawn will not electrify
       // this cycle (§6.5), so it must not warn as if it would.
-      const flash = e.pulseJoined === true ? dc.pulsarFlash : 0;
-      const f = Math.round(flash * 100);
-      color = `color-mix(in srgb, ${ENEMY_COLORS.pulsar}, #ffffff ${f}%)`;
-      break;
+      match: (e) => e.kind === 'pulsar' && e.pulseJoined !== true,
+      color: () => ENEMY_COLORS.pulsar,
+    },
+    {
+      match: (e) => e.kind === 'pulsar' && e.pulseJoined === true,
+      color: () =>
+        `color-mix(in srgb, ${ENEMY_COLORS.pulsar}, #ffffff ${Math.round(dc.pulsarFlash * 100)}%)`,
+    },
+  ];
+  for (const group of groups) {
+    let any = false;
+    for (const e of enemies) {
+      if (!group.match(e)) continue;
+      if (!any) ctx.beginPath();
+      any = true;
+      setXform(placeEnemy(e, g, vp, alpha));
+      pathKind(ctx, e, dc);
     }
+    if (any) strokeWithGlow(ctx, group.color(), 1.5, lowGlow);
   }
-  strokeWithGlow(ctx, color, 1.5, lowGlow);
-  ctx.restore();
 }
 
 // Player shots: thin bright ticks along the lane. Enemy shots: small

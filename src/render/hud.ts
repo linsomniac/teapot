@@ -6,7 +6,6 @@ import type { PlayfieldRect } from './canvas';
 import { pathText } from './font';
 import { strokeWithGlow } from './glow';
 import type { BandColors } from './palette';
-import { CLAW_COLOR } from './palette';
 
 export function drawHud(
   ctx: CanvasRenderingContext2D,
@@ -19,6 +18,10 @@ export function drawHud(
   const top = pf.y + size * 0.6;
   const hi = s.highScores.length > 0 ? s.highScores[0]!.score : 0;
 
+  // ONE stroke pass for the whole HUD (text + life chevrons + zapper
+  // pips): each extra wide-bbox 'lighter' pass costs a full composite on
+  // CPU-raster engines. The claw-yellow accents move to the band text
+  // color — identity carried by shape and position.
   ctx.beginPath();
   pathText(ctx, String(s.score), pf.x + size, top, size, 'left');
   pathText(
@@ -30,22 +33,18 @@ export function drawHud(
     'center',
   );
   pathText(ctx, `LVL ${s.level}`, pf.x + pf.width - size, top, size, 'right');
-  strokeWithGlow(ctx, colors.text, 1.5, lowGlow);
 
   // Lives: one small chevron per remaining life (left, under the score).
   const y2 = top + size * 1.6;
   const chev = size * 0.5;
-  ctx.beginPath();
   for (let i = 0; i < s.lives; i++) {
     const x = pf.x + size + i * chev * 2.2;
     ctx.moveTo(x, y2);
     ctx.lineTo(x + chev * 0.7, y2 + chev);
     ctx.lineTo(x + chev * 1.4, y2);
   }
-  strokeWithGlow(ctx, CLAW_COLOR, 1.5, lowGlow);
 
   // Superzapper pips: one diamond per remaining use (right, under level).
-  ctx.beginPath();
   for (let i = 0; i < s.superzapper; i++) {
     const x = pf.x + pf.width - size - i * chev * 2.2;
     const cy = y2 + chev / 2;
@@ -55,5 +54,5 @@ export function drawHud(
     ctx.lineTo(x - chev * 0.5, cy);
     ctx.lineTo(x, cy - chev * 0.6);
   }
-  strokeWithGlow(ctx, '#ffffff', 1.5, lowGlow);
+  strokeWithGlow(ctx, colors.text, 1.5, lowGlow);
 }

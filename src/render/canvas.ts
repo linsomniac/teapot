@@ -42,7 +42,9 @@ export function createCanvasView(canvas: HTMLCanvasElement): {
   view(): CanvasView;
   resize(): void;
 } {
-  const maybeCtx = canvas.getContext('2d');
+  // Opaque canvas: we always paint the full black frame, and alpha-less
+  // surfaces rasterize/composite faster (notably Firefox CPU canvas).
+  const maybeCtx = canvas.getContext('2d', { alpha: false });
   if (!maybeCtx) {
     throw new Error('2D canvas context unavailable');
   }

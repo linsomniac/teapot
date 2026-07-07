@@ -61,6 +61,22 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   prettier,
   {
+    // Acceptance driver scripts (Task 13.1): plain Node ESM, plus browser
+    // globals referenced inside page.evaluate/addInitScript callbacks.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        window: 'readonly',
+        document: 'readonly',
+        localStorage: 'readonly',
+        setTimeout: 'readonly',
+        AudioContext: 'readonly',
+      },
+    },
+  },
+  {
     // Underscore-prefixed params mark deliberately-unused arguments (e.g. the
     // tick-pipeline step placeholders that later tasks fill in).
     rules: {

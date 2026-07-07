@@ -144,6 +144,16 @@ export function startApp(canvas: HTMLCanvasElement): void {
     onGesture: () => audio.ensureRunning(),
   });
 
+  // Read-only debug handle for the acceptance smoke driver (Task 13.1,
+  // decision C3): lets a driven browser observe sim state and the audio
+  // context without touching either. Never written to by the app.
+  (window as unknown as Record<string, unknown>).__teapot = {
+    state: () => sim.getState(),
+    audioState: () => audio.context()?.state ?? 'none',
+    muted: () => audio.muted(),
+    paused: () => pause.paused(),
+  };
+
   // Auto-pause on visibility loss / window blur (§10) — doPause itself
   // ignores non-play phases.
   window.addEventListener('blur', doPause);

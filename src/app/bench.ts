@@ -29,7 +29,11 @@ import { buildLiveConfig } from './app';
 import type { InputSnapshot } from '../sim/types';
 
 export const BENCH_SEED = 0x7ea0b3;
-const BENCH_SECONDS = 60;
+const BENCH_SECONDS = (() => {
+  // TEMPORARY diagnostic: ?benchsecs=10 shortens the run for bisection.
+  const v = new URLSearchParams(window.location.search).get('benchsecs');
+  return v ? Number(v) : 60;
+})();
 const THREATENING = 24; // double MaxOnWell — covers a full split wave (§12.6)
 const SPIKERS = 7;
 
@@ -176,7 +180,7 @@ export function runBench(canvas: HTMLCanvasElement): void {
   // Fixed render resolution (§12.6): 1440×1080 reference playfield at DPR 2.
   canvas.width = 2880;
   canvas.height = 2160;
-  const maybeCtx = canvas.getContext('2d');
+  const maybeCtx = canvas.getContext('2d', { alpha: false });
   if (!maybeCtx) throw new Error('2D canvas context unavailable');
   const ctx: CanvasRenderingContext2D = maybeCtx;
   ctx.setTransform(2, 0, 0, 2, 0, 0);
@@ -290,6 +294,20 @@ export function runBench(canvas: HTMLCanvasElement): void {
     } else {
       const r = report();
       console.log(JSON.stringify({ bench: r }, null, 2));
+      // Also publish via the window title so external drivers (stock
+      // browsers without an automation protocol) can scrape the result.
+      document.title = `BENCHDONE ${JSON.stringify(r)}`;
+      // Optional acceptance-driver channel: ?report=<url> POSTs the JSON.
+      const reportUrl = new URLSearchParams(window.location.search).get(
+        'report',
+      );
+      if (reportUrl !== null) {
+        void fetch(reportUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: JSON.stringify(r),
+        }).catch(() => {});
+      }
       drawResults(r);
     }
   }

@@ -13,7 +13,7 @@ import { paramsForLevel, type LevelParams } from '../sim/difficultyCurve';
 import { pulsePhase } from '../sim/enemies/pulsar';
 import type { CanvasView } from './canvas';
 import { bandColors, CLAW_COLOR } from './palette';
-import { drawClaw, drawLaneHighlight, drawWell } from './well';
+import { drawClaw, drawLaneHighlight, drawWell, pathLaneOutline } from './well';
 import { drawHud } from './hud';
 import {
   drawAvoidSpikes,
@@ -24,14 +24,14 @@ import {
   drawTitle,
 } from './screens';
 import {
-  drawEnemy,
+  drawEnemies,
   drawShots,
   drawSpikes,
   ENEMY_COLORS,
   type EnemyDrawContext,
 } from './entities';
 import { createParticleSystem, type ParticleSystem } from './particles';
-import { strokeWithGlow } from './glow';
+import { beginAdditiveFrame, endAdditiveFrame, strokeWithGlow } from './glow';
 
 export interface RenderOptions {
   lowGlow: boolean;
@@ -63,6 +63,40 @@ const SUPERZAP_FX_TIME = 0.45; // seconds
 export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
   const particles = createParticleSystem(cfg.tuning.particlePoolCap);
   const vp: Viewport = { width: 0, height: 0 }; // reused every frame
+
+  // Offscreen well cache: the well wireframe (rings + spokes, with its
+  // glow) is static per level and is the largest stroked-pixel mass in a
+  // frame. The cache is OPAQUE (black baked in) and blitted source-over
+  // BEFORE the frame's additive block, so one plain copy serves as BOTH
+  // the playfield clear and the well — visually identical, since the well
+  // is the bottom layer over black where 'lighter' and source-over compose
+  // the same (Task 13.1 bench bisect).
+  const wellCache = document.createElement('canvas');
+  const wellCacheCtx = wellCache.getContext('2d', { alpha: false })!;
+  let wellCacheKey = '';
+
+  function blitWell(
+    view: CanvasView,
+    s: Readonly<SimState>,
+    pvp: Viewport,
+  ): void {
+    const g = cfg.geometries[s.geometryIndex]!;
+    const colors = bandColors(s.paletteIndex);
+    const key = `${s.geometryIndex}|${s.paletteIndex}|${pvp.width}x${pvp.height}|${view.dpr}|${opts.lowGlow}`;
+    if (key !== wellCacheKey) {
+      wellCacheKey = key;
+      wellCache.width = Math.max(1, Math.round(pvp.width * view.dpr));
+      wellCache.height = Math.max(1, Math.round(pvp.height * view.dpr));
+      wellCacheCtx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+      // OPAQUE black base: the blit doubles as the playfield clear.
+      wellCacheCtx.fillStyle = '#000';
+      wellCacheCtx.fillRect(0, 0, pvp.width, pvp.height);
+      wellCacheCtx.globalCompositeOperation = 'lighter';
+      drawWell(wellCacheCtx, g, pvp, colors.well, opts.lowGlow);
+      wellCacheCtx.globalCompositeOperation = 'source-over';
+    }
+    view.ctx.drawImage(wellCache, 0, 0, pvp.width, pvp.height);
+  }
   const dc: EnemyDrawContext = { frame: 0, pulsarFlash: 0 };
   // Last drawn player position (canvas coords): resolveDeath may have
   // already advanced levels by the time playerDied is consumed (WARP spike
@@ -137,15 +171,38 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
       particles.update(dtSec);
       if (superzapFx > 0) superzapFx = Math.max(0, superzapFx - dtSec);
 
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, view.cssWidth, view.cssHeight);
+      const inWell = IN_WELL_PHASES.has(s.phase);
+      // The opaque well blit clears the playfield in non-zoomed play
+      // phases; only the letterbox bars (and zoomed/off-well frames) need
+      // the explicit clear.
+      {
+        ctx.fillStyle = '#000';
+        if (!inWell || s.phase === 'WARP') {
+          ctx.fillRect(0, 0, view.cssWidth, view.cssHeight);
+        } else {
+          const pf = playfield;
+          if (pf.x > 0) {
+            ctx.fillRect(0, 0, pf.x + 1, view.cssHeight);
+            ctx.fillRect(pf.x + pf.width - 1, 0, view.cssWidth, view.cssHeight);
+          }
+          if (pf.y > 0) {
+            ctx.fillRect(0, 0, view.cssWidth, pf.y + 1);
+            ctx.fillRect(
+              0,
+              pf.y + pf.height - 1,
+              view.cssWidth,
+              view.cssHeight,
+            );
+          }
+        }
+      }
 
       ctx.save();
       ctx.translate(playfield.x, playfield.y);
       const pvp = playfieldVp(view);
       const colors = bandColors(s.paletteIndex);
 
-      if (IN_WELL_PHASES.has(s.phase)) {
+      if (inWell) {
         const g = cfg.geometries[s.geometryIndex]!;
         const wd = s.prevWarpDepth + (s.warpDepth - s.prevWarpDepth) * alpha;
 
@@ -165,7 +222,9 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
           ctx.translate(-zoomVanX, -zoomVanY);
         }
 
-        drawWell(ctx, g, pvp, colors.well, opts.lowGlow);
+        // Opaque blit under source-over FIRST, then the additive block.
+        blitWell(view, s, pvp);
+        beginAdditiveFrame(ctx);
         drawSpikes(ctx, s.spikes, g, pvp, opts.lowGlow);
 
         if (
@@ -188,21 +247,26 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
         }
 
         // Pulsar telegraph flash (participating Pulsars only, applied per
-        // enemy in drawEnemy) and electrified lanes during the pulse.
+        // group in drawEnemies) and electrified lanes during the pulse.
         const phase = pulsePhase(s.pulseClock, params(s).pulse, cfg.tuning);
         dc.pulsarFlash =
           phase === 'telegraph' ? (dc.frame % 8 < 4 ? 0.85 : 0.3) : 0;
         if (phase === 'pulse') {
+          // One batched stroke for ALL electrified lanes: every extra
+          // large-bounding-box 'lighter' pass costs a full-canvas composite
+          // on CPU-raster engines (Firefox/Linux).
+          let any = false;
           for (const e of s.enemies) {
             if (e.kind === 'pulsar' && e.pulseJoined === true) {
-              drawLaneHighlight(ctx, g, pvp, e.lane, '#d9fbff', opts.lowGlow);
+              if (!any) ctx.beginPath();
+              any = true;
+              pathLaneOutline(ctx, g, pvp, e.lane);
             }
           }
+          if (any) strokeWithGlow(ctx, '#d9fbff', 2.5, opts.lowGlow);
         }
 
-        for (const e of s.enemies) {
-          drawEnemy(ctx, e, g, pvp, alpha, dc, opts.lowGlow);
-        }
+        drawEnemies(ctx, s.enemies, g, pvp, alpha, dc, opts.lowGlow);
         drawShots(
           ctx,
           s.playerShots,
@@ -214,6 +278,7 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
         );
       }
 
+      if (!inWell) beginAdditiveFrame(ctx);
       ctx.restore();
 
       // HUD + screens draw un-zoomed, over the well (§10/§11.1).
@@ -254,8 +319,6 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
       // burst (§11.1).
       if (superzapFx > 0) {
         const t = 1 - superzapFx / SUPERZAP_FX_TIME; // 0 → 1
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.35 * (1 - t);
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, view.cssWidth, view.cssHeight);
@@ -271,8 +334,9 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
           ctx.lineTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
         }
         strokeWithGlow(ctx, '#ffffff', 2, opts.lowGlow);
-        ctx.restore();
       }
+
+      endAdditiveFrame(ctx);
     },
 
     particles: () => particles,

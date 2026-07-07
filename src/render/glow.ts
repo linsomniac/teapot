@@ -10,26 +10,40 @@ export const GLOW_ALPHA = 0.22;
 
 // Strokes the context's CURRENT path twice (wide halo + bright core), so
 // callers build the path once — no per-call allocation.
+//
+// AIDEV-NOTE: deliberately NO save/restore and NO composite-op write here —
+// the frame renderer sets globalCompositeOperation='lighter' ONCE per frame
+// (beginAdditiveFrame/endAdditiveFrame). Per-call state churn forces
+// CPU-raster engines (Firefox/Linux canvas) to flush their pipeline on
+// every stroke, which dominated the §12.6 bench before this was hoisted.
+// Default (butt/miter) caps for the same reason: round caps are expensive
+// in software rasterization and read identically at these widths.
 export function strokeWithGlow(
   ctx: CanvasRenderingContext2D,
   color: string,
   coreWidth: number,
   lowGlow: boolean,
 ): void {
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
   ctx.strokeStyle = color;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
   if (!lowGlow) {
     ctx.globalAlpha = GLOW_ALPHA;
     ctx.lineWidth = coreWidth * GLOW_WIDTH_MUL;
     ctx.stroke();
+    ctx.globalAlpha = 1;
   }
-  ctx.globalAlpha = 1;
   ctx.lineWidth = coreWidth;
   ctx.stroke();
-  ctx.restore();
+}
+
+// Bracket ALL additive line-art drawing in one composite-state block per
+// frame (§11.1: overlaps brighten — 'lighter').
+export function beginAdditiveFrame(ctx: CanvasRenderingContext2D): void {
+  ctx.globalCompositeOperation = 'lighter';
+}
+
+export function endAdditiveFrame(ctx: CanvasRenderingContext2D): void {
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
 }
 
 // ?lowglow=1 manual degradation flag (§11.1) — parsed once at startup.

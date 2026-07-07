@@ -4,7 +4,6 @@
 // stream, separate from the sim RNG, so visuals never affect determinism.
 
 import { makeRng, type Rng } from '../sim/rng';
-import { strokeWithGlow } from './glow';
 
 interface Particle {
   active: boolean;
@@ -96,17 +95,26 @@ export function createParticleSystem(
       for (const p of pool) {
         if (p.active && !drawColors.includes(p.color)) drawColors.push(p.color);
       }
-      for (const color of drawColors) {
-        ctx.beginPath();
-        for (const p of pool) {
-          if (!p.active || p.color !== color) continue;
-          // Short line spark along the velocity vector, fading with life.
-          const k = 0.04 * (p.life / p.maxLife) + 0.012;
-          ctx.moveTo(p.x, p.y);
-          ctx.lineTo(p.x - p.vx * k, p.y - p.vy * k);
-        }
-        strokeWithGlow(ctx, color, 1.5, lowGlow);
+      // Sparks are tiny and numerous (the pool can hold hundreds). ONE
+      // additive pass, two width groups: every extra full-canvas-bbox
+      // 'lighter' stroke costs a whole composite on CPU-raster engines, so
+      // burst color identity comes from the death-burst palette instead of
+      // per-particle stroke passes; the glow identity lives on the
+      // well/entities (§11.1).
+      // The frame is already in its additive block (renderer).
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (const p of pool) {
+        if (!p.active) continue;
+        // Short line spark along the velocity vector, fading with life.
+        const k = 0.04 * (p.life / p.maxLife) + 0.012;
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - p.vx * k, p.y - p.vy * k);
       }
+      ctx.strokeStyle = '#ffd9a0';
+      ctx.stroke();
+      void lowGlow;
+      void drawColors;
     },
     liveCount(): number {
       let n = 0;

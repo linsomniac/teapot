@@ -114,7 +114,7 @@ medium+ addressed → box checked → commit.
   (§13/D30/D44).
 
 ## Phase 13 — Acceptance
-- [ ] 13.1 §15 criteria pass: every criterion → green test or checked manual/visual
+- [x] 13.1 §15 criteria pass: every criterion → green test or checked manual/visual
   item; manual browser-integration checklist + visual-identity checklist per browser;
   smoke pass in Chrome/Firefox (v1 acceptance browsers, C1); `?bench=1` within budget
   on the recorded reference machine (the dev machine, C2); human-judgment items

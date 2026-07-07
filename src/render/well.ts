@@ -52,6 +52,20 @@ export function drawWell(
   strokeWithGlow(ctx, wellColor, 1.5, lowGlow);
 }
 
+// Append one lane's rim-to-bottom quad outline to the current path.
+export function pathLaneOutline(
+  ctx: CanvasRenderingContext2D,
+  g: Geometry,
+  vp: Viewport,
+  lane: number,
+): void {
+  vertexAt(ctx, g, vp, lane, 0, true);
+  vertexAt(ctx, g, vp, lane + 1, 0, false);
+  vertexAt(ctx, g, vp, lane + 1, 1, false);
+  vertexAt(ctx, g, vp, lane, 1, false);
+  vertexAt(ctx, g, vp, lane, 0, false);
+}
+
 // The rounded player lane's rim-to-bottom outline, drawn brighter — the
 // primary aiming cue (§11.1).
 export function drawLaneHighlight(
@@ -63,11 +77,7 @@ export function drawLaneHighlight(
   lowGlow: boolean,
 ): void {
   ctx.beginPath();
-  vertexAt(ctx, g, vp, lane, 0, true);
-  vertexAt(ctx, g, vp, lane + 1, 0, false);
-  vertexAt(ctx, g, vp, lane + 1, 1, false);
-  vertexAt(ctx, g, vp, lane, 1, false);
-  vertexAt(ctx, g, vp, lane, 0, false);
+  pathLaneOutline(ctx, g, vp, lane);
   strokeWithGlow(ctx, color, 2.5, lowGlow);
 }
 
