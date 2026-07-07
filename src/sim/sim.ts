@@ -22,6 +22,7 @@ import { sweptOverlap } from './collision';
 import { applyScore, levelClearBonus, pointsForKill } from './scoring';
 import { hashState } from './hash';
 import {
+  applyQuit,
   enterWarp,
   maxStartLevel,
   resolveDeath,
@@ -568,6 +569,11 @@ function makeSim(s: SimState, cfg: GameConfig, benchMode: boolean): Sim {
       // the single step-6 bonus-life pass, and the playerDiedThisTick flag
       // steps 4–5 set (§6).
       const ctx: TickCtx = { points: 0, playerDied: false };
+      // Quit-to-title takes precedence over the whole tick (§10): a lethal
+      // event this tick must never outrun the player's quit.
+      if (input.quit && applyQuit(s, cfg)) {
+        return { events };
+      }
       if (s.phase === 'PLAYING' || s.phase === 'WARP') {
         tickCombat(s, input, cfg, ctx, events, benchMode);
       } else if (s.phase === 'GET_READY') {

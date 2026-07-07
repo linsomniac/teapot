@@ -155,6 +155,18 @@ export function enterWarp(s: SimState, events: SimEvent[]): void {
   events.push({ type: 'warpStart' });
 }
 
+// Quit-to-title (§10/D19): uiQuit forces GAME_OVER from any pauseable
+// state. Runs BEFORE the combat pipeline so a lethal event on the same
+// tick can never outrun the player's quit (codex P2) — the run ends at the
+// moment of quitting, with no life lost.
+export function applyQuit(s: SimState, cfg: GameConfig): boolean {
+  if (s.phase === 'PLAYING' || s.phase === 'GET_READY' || s.phase === 'WARP') {
+    enterGameOver(s, cfg);
+    return true;
+  }
+  return false;
+}
+
 // Death resolution (§5/§9/§10) — runs as step 9 on any tick a lethality
 // step killed the player, INSTEAD of the normal transition pass.
 export function resolveDeath(
@@ -272,8 +284,8 @@ export function transition(
       break;
     }
     case 'PLAYING': {
-      // Death is handled by resolveDeath (step 9 on death ticks); quit
-      // lands in Task 6.2.
+      // Death is handled by resolveDeath, quit by applyQuit — both run in
+      // tick() around the combat pipeline.
       break;
     }
     case 'GET_READY': {

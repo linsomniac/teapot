@@ -219,3 +219,215 @@ describe('beginLevel (§4/§5/§6/§8.5)', () => {
     expect(s.livesGranted).toBe(2);
   });
 });
+
+// Task 6.2 — quit-to-title + the FULL §10 transition set.
+describe('quit-to-title (§10/D19)', () => {
+  function inPlay(level = 5) {
+    const sim = createSim(cfg, 1);
+    const s = mutableState(sim);
+    s.lives = cfg.tuning.startingLives;
+    beginLevel(s, level, cfg);
+    s.phase = 'PLAYING';
+    return { sim, s };
+  }
+
+  it('quit forces GAME_OVER from PLAYING, GET_READY, and WARP', () => {
+    for (const phase of ['PLAYING', 'GET_READY', 'WARP'] as const) {
+      const { sim, s } = inPlay();
+      s.phase = phase;
+      s.getReadyTimer = 1;
+      sim.tick(makeInput({ quit: true }));
+      expect(s.phase, phase).toBe('GAME_OVER');
+      expect(s.beatTimer).toBeGreaterThan(0);
+    }
+  });
+
+  it('a quit run still reaches high-score entry when the score qualifies', () => {
+    const { sim, s } = inPlay();
+    s.score = 5000;
+    s.highScores = [];
+    sim.tick(makeInput({ quit: true }));
+    let guard = 0;
+    while (s.phase === 'GAME_OVER' && guard++ < 200) sim.tick(makeInput());
+    expect(s.phase).toBe('HIGH_SCORE_ENTRY'); // the run's score counted
+  });
+
+  it('quit beats a same-tick lethal event — GAME_OVER, no life lost (codex P2)', () => {
+    const { sim, s } = inPlay();
+    const livesBefore = s.lives;
+    s.enemyShots.push({ lane: 8, depth: 0.005, prevDepth: 0.02 }); // lethal
+    const { events } = sim.tick(makeInput({ quit: true }));
+    expect(s.phase).toBe('GAME_OVER');
+    expect(s.lives).toBe(livesBefore); // the run ended before the shot landed
+    expect(events.some((ev) => ev.type === 'playerDied')).toBe(false);
+  });
+
+  it('quit is ignored in menu states', () => {
+    const sim = createSim(cfg, 1);
+    const s = mutableState(sim);
+    sim.tick(makeInput({ quit: true }));
+    expect(s.phase).toBe('TITLE');
+    sim.tick(makeInput({ confirm: true }));
+    sim.tick(makeInput({ quit: true }));
+    expect(s.phase).toBe('LEVEL_SELECT');
+    s.phase = 'HIGH_SCORE_ENTRY';
+    sim.tick(makeInput({ quit: true }));
+    expect(s.phase).toBe('HIGH_SCORE_ENTRY');
+  });
+});
+
+describe('the full §10 transition set — every edge, and no others', () => {
+  function freshPlay() {
+    const sim = createSim(cfg, 1);
+    const s = mutableState(sim);
+    s.lives = cfg.tuning.startingLives;
+    s.score = 0;
+    s.livesGranted = 0;
+    beginLevel(s, 5, cfg);
+    s.phase = 'PLAYING';
+    return { sim, s };
+  }
+  const die = (s: SimState) =>
+    s.enemyShots.push({ lane: 8, depth: 0.005, prevDepth: 0.02 });
+  const emptyWave = (s: SimState) => {
+    s.budget = { flipper: 0, tanker: 0, spiker: 0, fuseball: 0, pulsar: 0 };
+    s.enemies = [];
+  };
+
+  it('exercises all 13 declared edges', () => {
+    // 1. TITLE → LEVEL_SELECT (confirm)
+    const t1 = createSim(cfg, 1);
+    t1.tick(makeInput({ confirm: true }));
+    expect(t1.getState().phase).toBe('LEVEL_SELECT');
+    // 2. LEVEL_SELECT → TITLE (back)
+    t1.tick(makeInput({ back: true }));
+    expect(t1.getState().phase).toBe('TITLE');
+    // 3. LEVEL_SELECT → PLAYING (confirm)
+    t1.tick(makeInput({ confirm: true }));
+    t1.tick(makeInput({ confirm: true }));
+    expect(t1.getState().phase).toBe('PLAYING');
+    // 4. PLAYING → GET_READY (death, lives remain)
+    const t4 = freshPlay();
+    die(t4.s);
+    t4.sim.tick(makeInput());
+    expect(t4.s.phase).toBe('GET_READY');
+    // 5. GET_READY → PLAYING (timer elapses)
+    t4.s.getReadyTimer = 0.001;
+    t4.sim.tick(makeInput());
+    expect(t4.s.phase).toBe('PLAYING');
+    // 6. PLAYING → WARP (wave complete)
+    emptyWave(t4.s);
+    t4.sim.tick(makeInput());
+    expect(t4.s.phase).toBe('WARP');
+    // 7a. WARP → PLAYING (descent complete)
+    t4.s.warpDepth = 1;
+    t4.sim.tick(makeInput());
+    expect(t4.s.phase).toBe('PLAYING');
+    // 7b. WARP → PLAYING (spike death, lives remaining)
+    const t7 = freshPlay();
+    t7.s.phase = 'WARP';
+    t7.s.spikes = [{ lane: 8, topDepth: 0.001 }];
+    t7.sim.tick(makeInput());
+    expect(t7.s.phase).toBe('PLAYING');
+    expect(t7.s.level).toBe(6);
+    // 8a. PLAYING → GAME_OVER (death, no lives left)
+    const t8 = freshPlay();
+    t8.s.lives = 1;
+    die(t8.s);
+    t8.sim.tick(makeInput());
+    expect(t8.s.phase).toBe('GAME_OVER');
+    // 8b. PLAYING → GAME_OVER (quit)
+    const t8b = freshPlay();
+    t8b.sim.tick(makeInput({ quit: true }));
+    expect(t8b.s.phase).toBe('GAME_OVER');
+    // 9. GET_READY → GAME_OVER (quit)
+    const t9 = freshPlay();
+    t9.s.phase = 'GET_READY';
+    t9.s.getReadyTimer = 1;
+    t9.sim.tick(makeInput({ quit: true }));
+    expect(t9.s.phase).toBe('GAME_OVER');
+    // 10a. WARP → GAME_OVER (spike death, no lives left)
+    const t10 = freshPlay();
+    t10.s.phase = 'WARP';
+    t10.s.lives = 1;
+    t10.s.spikes = [{ lane: 8, topDepth: 0.001 }];
+    t10.sim.tick(makeInput());
+    expect(t10.s.phase).toBe('GAME_OVER');
+    // 10b. WARP → GAME_OVER (quit)
+    const t10b = freshPlay();
+    t10b.s.phase = 'WARP';
+    t10b.sim.tick(makeInput({ quit: true }));
+    expect(t10b.s.phase).toBe('GAME_OVER');
+    // 11. GAME_OVER → HIGH_SCORE_ENTRY (beat elapsed, qualifies)
+    const t11 = freshPlay();
+    t11.s.phase = 'GAME_OVER';
+    t11.s.beatTimer = 0.001;
+    t11.s.score = 100;
+    t11.s.highScores = [];
+    t11.sim.tick(makeInput());
+    expect(t11.s.phase).toBe('HIGH_SCORE_ENTRY');
+    // 12. GAME_OVER → TITLE (beat elapsed, does not qualify)
+    const t12 = freshPlay();
+    t12.s.phase = 'GAME_OVER';
+    t12.s.beatTimer = 0.001;
+    t12.s.score = 0;
+    t12.s.highScores = fullTable(1000);
+    t12.sim.tick(makeInput());
+    expect(t12.s.phase).toBe('TITLE');
+    // 13. HIGH_SCORE_ENTRY → TITLE (initials confirmed)
+    const t13 = freshPlay();
+    t13.s.phase = 'HIGH_SCORE_ENTRY';
+    t13.s.hsSlot = 2;
+    t13.sim.tick(makeInput({ confirm: true }));
+    expect(t13.s.phase).toBe('TITLE');
+  });
+
+  it('fires NO undeclared transitions from any state', () => {
+    const noisy = [
+      makeInput({ fire: true, zap: true, move: 0.45 }),
+      makeInput({ confirm: true, back: true }), // menus consume these per §10 only
+    ];
+    // PLAYING: confirm/back/fire/zap/move never leave the state.
+    const p = freshPlay();
+    p.s.enemies = [];
+    p.s.budget.flipper = 5; // wave incomplete
+    for (const input of noisy) p.sim.tick(input);
+    expect(p.s.phase).toBe('PLAYING');
+    // GET_READY: only the timer or quit exit; fire/confirm/back do nothing.
+    const g = freshPlay();
+    g.s.phase = 'GET_READY';
+    g.s.getReadyTimer = 10;
+    for (const input of noisy) g.sim.tick(input);
+    expect(g.s.phase).toBe('GET_READY');
+    // WARP: only bottom-arrival, spike death, or quit exit.
+    const w = freshPlay();
+    w.s.phase = 'WARP';
+    for (const input of noisy) w.sim.tick(input);
+    expect(w.s.phase).toBe('WARP');
+    // GAME_OVER: inputs never exit early (beat gate only).
+    const o = freshPlay();
+    o.s.phase = 'GAME_OVER';
+    o.s.beatTimer = 10;
+    for (const input of [...noisy, makeInput({ quit: true })])
+      o.sim.tick(input);
+    expect(o.s.phase).toBe('GAME_OVER');
+    // TITLE: only confirm exits (asserted with every other input in 3.1).
+    const sim = createSim(cfg, 1);
+    for (const input of [
+      ...noisy.slice(0, 1),
+      makeInput({ back: true, quit: true }),
+    ])
+      sim.tick(input);
+    expect(sim.getState().phase).toBe('TITLE');
+    // HIGH_SCORE_ENTRY: fire/zap/move/quit never exit; back stays inside.
+    const h = freshPlay();
+    h.s.phase = 'HIGH_SCORE_ENTRY';
+    h.s.hsSlot = 1;
+    for (const input of [
+      ...noisy.slice(0, 1),
+      makeInput({ quit: true, back: true }),
+    ])
+      h.sim.tick(input);
+    expect(h.s.phase).toBe('HIGH_SCORE_ENTRY');
+  });
+});
