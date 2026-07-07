@@ -1,0 +1,18 @@
+# CI gate (decision C7, loop/impl-clarifying.md): the repo gained a remote,
+# so `npm run check` (typecheck + lint + tests) runs on the pinned Node.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check

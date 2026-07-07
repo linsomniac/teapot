@@ -91,6 +91,13 @@ lint + test) per task DoD, with the Node version pinned by `.nvmrc`/`engines`
 `npm run check` on the pinned Node. Changed: spec §13 (golden-replay
 re-record note); guide Task 12.2.
 
+*Superseded 2026-07-06 (post-build):* the developer requested publication to
+`github.com/linsomniac/teapot`, so the anticipated CI workflow was added
+(`.github/workflows/ci.yml`, `npm run check` on the pinned Node) plus a
+GitHub Pages deploy (`pages.yml` → linsomniac.github.io/teapot). C6's
+direct-to-`master` convention carries over as direct-to-`main` (branch
+renamed at publication).
+
 ### C8. Playwright is permitted as dev-only tooling
 
 The zero-dependency rule (§12.1) is about the *runtime* bundle; dev-only
