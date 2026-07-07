@@ -200,9 +200,39 @@ export function resolveDeath(
   void events;
 }
 
+// UI-navigation selector (§10/§8.3): the movement delta accumulates and
+// emits ONE step per full ±1.0 lanes, at most one step per uiStepInterval;
+// the accumulator resets on each emitted step and clears when input crosses
+// zero (or on state entry) — the selector stops the moment the key is
+// released, with no post-release backlog.
+function uiSelectorStep(
+  s: SimState,
+  input: InputSnapshot,
+  cfg: GameConfig,
+): -1 | 0 | 1 {
+  s.selectorTimer = Math.max(0, s.selectorTimer - TICK_SEC);
+  const move = input.move;
+  if (
+    move === 0 ||
+    (s.selectorAccum !== 0 && move > 0 !== s.selectorAccum > 0)
+  ) {
+    s.selectorAccum = 0; // zero-cross / release: immediate stop
+  }
+  if (move === 0) return 0;
+  s.selectorAccum += move;
+  if (Math.abs(s.selectorAccum) >= 1 && s.selectorTimer <= 0) {
+    const step = s.selectorAccum > 0 ? 1 : -1;
+    s.selectorAccum = 0; // reset on emit
+    s.selectorTimer = cfg.tuning.uiStepInterval;
+    return step;
+  }
+  return 0;
+}
+
 // §10 transitions — step 9 of the tick order. Menu states act ONLY on the
 // edge-triggered `confirm`/`back` intents, never the held `fire` gameplay
-// boolean (C10). Runs once per tick; at most one transition fires.
+// boolean (C10; the TITLE click carve-out arrives as `confirm` from the
+// input layer). Runs once per tick; at most one transition fires.
 export function transition(
   s: SimState,
   input: InputSnapshot,
@@ -218,6 +248,16 @@ export function transition(
       break;
     }
     case 'LEVEL_SELECT': {
+      // §10: selector ranges 1..max(9, maxLevelReached), clamped (no wrap);
+      // left decreases, right increases.
+      const step = uiSelectorStep(s, input, cfg);
+      if (step !== 0) {
+        const next = Math.min(maxStartLevel(s), Math.max(1, s.selector + step));
+        if (next !== s.selector) {
+          s.selector = next;
+          events.push({ type: 'uiMove' });
+        }
+      }
       if (input.back) {
         enterTitle(s);
       } else if (input.confirm) {
@@ -267,8 +307,15 @@ export function transition(
       break;
     }
     case 'HIGH_SCORE_ENTRY': {
-      // Slot rotation/back handling is Task 6.1; the confirm edge that locks
-      // slots (and, on the third, commits the entry) lives here.
+      // §10: UI steps rotate the active slot's character over the ordered,
+      // WRAPPING 37-char set (space, A–Z, 0–9).
+      const step = uiSelectorStep(s, input, cfg);
+      if (step !== 0) {
+        const n = HS_CHARSET.length;
+        s.hsInitials[s.hsSlot] =
+          ((((s.hsInitials[s.hsSlot] ?? 1) + step) % n) + n) % n;
+        events.push({ type: 'uiMove' });
+      }
       if (input.confirm) {
         events.push({ type: 'uiConfirm' });
         if (s.hsSlot >= 2) {
@@ -284,6 +331,8 @@ export function transition(
         } else {
           s.hsSlot += 1;
         }
+      } else if (input.back && s.hsSlot > 0) {
+        s.hsSlot -= 1; // back returns to the previous slot; inert on the first
       }
       break;
     }

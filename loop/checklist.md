@@ -73,7 +73,7 @@ medium+ addressed → box checked → commit.
   empty-well consumes, PLAYING-only, reset at level, death-persist) (§5).
 
 ## Phase 6 — State machine completion
-- [ ] 6.1 Title/level-select/high-score navigation (selector steps + reset, clamp,
+- [x] 6.1 Title/level-select/high-score navigation (selector steps + reset, clamp,
   default level, entry loop via edge-triggered `confirm` (C10), click carve-out,
   qualification) (§10).
 - [ ] 6.2 Quit-to-title + **full transition test** (every §10 edge incl. quit from
