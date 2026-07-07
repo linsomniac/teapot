@@ -42,6 +42,9 @@ export function advanceFlip(e: Enemy, flipAnimTime: number): boolean {
   e.flip.progress += TICK_SEC / flipAnimTime;
   if (e.flip.progress >= 1 - 1e-9) {
     e.lane = e.flip.to;
+    // The rotation animation already covered the transit — the completion
+    // frame must not re-tween from the source lane (render-only field).
+    e.prevLane = e.flip.to;
     e.flip = null;
     return true;
   }
