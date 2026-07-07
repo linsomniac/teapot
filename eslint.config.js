@@ -3,8 +3,13 @@ import tseslint from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
 
 // AIDEV-NOTE: sim-purity + engine-stability lint gates (§12.2/§12.3, I16).
-// Active from Phase 1 so they guard sim code as it is written; Task 12.4 adds
-// a fixture proving they fire. Task 13.1's acceptance pass re-checks them.
+// Active from Phase 1 so they guarded sim code as it was written.
+// Task 12.4 verification (2026-07-06): deliberately-violating probe files
+// (Math.sqrt/sin/cos/atan2 in sim/, Math.random+Date.now+performance.now in
+// sim/, window+localStorage+document in persist/) each FAILED `npm run
+// lint` (10 no-restricted violations total), src/sim/projection.ts's
+// transcendental exemption passed clean, and the real tree lints green.
+// Task 13.1's acceptance pass re-checks this.
 
 // Modules that must stay browser-API-free and deterministic (§12.2).
 const PURE_PATHS = [
