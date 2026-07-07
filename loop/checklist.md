@@ -67,7 +67,7 @@ medium+ addressed → box checked → commit.
   bonus + bonus-life re-check) (§8.4).
 - [x] 5.2 Warp descent + fairness (move/fire/trim, cooldown reset, spike death rules,
   WARP→PLAYING/GAME_OVER) + **descent-fairness simulated test** (§9).
-- [ ] 5.3 GET_READY + death/respawn (budget-return by type, shots cleared, persist
+- [x] 5.3 GET_READY + death/respawn (budget-return by type, shots cleared, persist
   spikes/score/rim, input rules, last-life→GAME_OVER, same-tick kill+death) (§5/§10).
 - [ ] 5.4 Superzapper (FULL/PARTIAL/EMPTY, all-kill no-split, nearest-rim 2nd use,
   empty-well consumes, PLAYING-only, reset at level, death-persist) (§5).

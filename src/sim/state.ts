@@ -177,7 +177,26 @@ export function resolveDeath(
     }
     return;
   }
-  // PLAYING death → GET_READY / GAME_OVER lands in Task 5.3.
+  if (s.phase === 'PLAYING') {
+    // §5 after-death: on-well enemies are removed instantly and RETURNED to
+    // the wave's remaining spawn budget by type — they re-enter through the
+    // normal spawner. Flippers released by Tanker splits return to the
+    // Flipper budget, which may therefore exceed the level's authored count
+    // (intended). Shots (both sides) are cleared; spikes, score, rim
+    // position, and Superzapper state persist.
+    s.lives -= 1;
+    for (const e of s.enemies) {
+      s.budget[e.kind] += 1;
+    }
+    s.enemies = [];
+    clearAllShots(s);
+    if (s.lives > 0) {
+      s.phase = 'GET_READY';
+      s.getReadyTimer = cfg.tuning.getReadyDuration;
+    } else {
+      enterGameOver(s, cfg);
+    }
+  }
   void events;
 }
 
@@ -212,9 +231,17 @@ export function transition(
       }
       break;
     }
-    case 'PLAYING':
+    case 'PLAYING': {
+      // Death is handled by resolveDeath (step 9 on death ticks); quit
+      // lands in Task 6.2.
+      break;
+    }
     case 'GET_READY': {
-      // Death/get-ready/quit edges land in Tasks 5.3/6.x.
+      // §10: lasts getReadyDuration, then play resumes (PLAYING-entry
+      // resets restart the spawner cadence and pulse clock).
+      if (s.getReadyTimer <= 0) {
+        enterPlaying(s, cfg);
+      }
       break;
     }
     case 'WARP': {
