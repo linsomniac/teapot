@@ -94,7 +94,7 @@ medium+ addressed → box checked → commit.
 - [x] 9.1 AudioContext lifecycle + synthesized SFX per event + mute (§11.2).
 
 ## Phase 10 — Input
-- [ ] 10.1 Pure snapshot mapping + multi-tick apportionment test (§12.2/§12.3).
+- [x] 10.1 Pure snapshot mapping + multi-tick apportionment test (§12.2/§12.3).
 - [ ] 10.2 DOM capture + pointer-lock lifecycle + consumed clicks + accumulator clear
   (§5). *(browser-integration verified via manual checklist in 13.1)*
 
