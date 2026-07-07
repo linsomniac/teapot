@@ -142,6 +142,19 @@ export function enterGameOver(s: SimState, cfg: GameConfig): void {
   clearAllShots(s);
 }
 
+// PLAYING → WARP on wave completion (§8.4/§9): shots on both sides are
+// cancelled, spikes remain, and the fire cooldown resets so a shot can be
+// fired on the first descent tick (the descent-fairness invariant assumes
+// fire is available from descent start).
+export function enterWarp(s: SimState, events: SimEvent[]): void {
+  s.phase = 'WARP';
+  s.warpDepth = 0;
+  s.prevWarpDepth = 0;
+  clearAllShots(s);
+  s.fireCooldown = 0;
+  events.push({ type: 'warpStart' });
+}
+
 // §10 transitions — step 9 of the tick order. Menu states act ONLY on the
 // edge-triggered `confirm`/`back` intents, never the held `fire` gameplay
 // boolean (C10). Runs once per tick; at most one transition fires.

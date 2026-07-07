@@ -63,7 +63,7 @@ medium+ addressed → box checked → commit.
   lane w/ Spiker exclusion, budgets) (§6).
 
 ## Phase 5 — Progression, warp, Superzapper, death
-- [ ] 5.1 Wave completion + level advance (PLAYING-only, not on death tick, clear
+- [x] 5.1 Wave completion + level advance (PLAYING-only, not on death tick, clear
   bonus + bonus-life re-check) (§8.4).
 - [ ] 5.2 Warp descent + fairness (move/fire/trim, cooldown reset, spike death rules,
   WARP→PLAYING/GAME_OVER) + **descent-fairness simulated test** (§9).

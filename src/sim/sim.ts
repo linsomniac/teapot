@@ -18,9 +18,10 @@ import { updateFuseball } from './enemies/fuseball';
 import { pulsePhase, updatePulsar } from './enemies/pulsar';
 import { updateSpawner } from './spawner';
 import { sweptOverlap } from './collision';
-import { applyScore, pointsForKill } from './scoring';
+import { applyScore, levelClearBonus, pointsForKill } from './scoring';
 import { hashState } from './hash';
 import {
+  enterWarp,
   maxStartLevel,
   transition,
   type InitialSave,
@@ -502,13 +503,26 @@ function stepSpawner(
   if (s.phase !== 'PLAYING') return;
   updateSpawner(s, params, cfg, events);
 }
+// Step 8 (§8.4): the level ends when the spawn budget is exhausted AND no
+// enemies remain (never-despawning Spikers/Pulsars must be destroyed).
+// Runs only in PLAYING and never on a tick the player died; awards the
+// level-clear bonus (then the bonus-life rule — always a non-death tick
+// here, so the grant is never forfeited: the §7 economy invariant's path).
 function stepWaveCompletion(
-  _s: SimState,
-  _cfg: GameConfig,
-  _ctx: TickCtx,
-  _events: SimEvent[],
-  _benchMode: boolean,
-): void {}
+  s: SimState,
+  cfg: GameConfig,
+  ctx: TickCtx,
+  events: SimEvent[],
+  benchMode: boolean,
+): void {
+  if (benchMode) return; // census-hold (§12.6)
+  if (s.phase !== 'PLAYING' || ctx.playerDied) return;
+  const b = s.budget;
+  if (b.flipper + b.tanker + b.spiker + b.fuseball + b.pulsar > 0) return;
+  if (s.enemies.length > 0) return;
+  applyScore(s, levelClearBonus(s.level, cfg.scoring), cfg, false, events);
+  enterWarp(s, events); // PLAYING → WARP (§10)
+}
 
 function makeSim(s: SimState, cfg: GameConfig, benchMode: boolean): Sim {
   return {
