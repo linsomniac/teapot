@@ -155,6 +155,32 @@ export function enterWarp(s: SimState, events: SimEvent[]): void {
   events.push({ type: 'warpStart' });
 }
 
+// Death resolution (§5/§9/§10) — runs as step 9 on any tick a lethality
+// step killed the player, INSTEAD of the normal transition pass.
+export function resolveDeath(
+  s: SimState,
+  cfg: GameConfig,
+  events: SimEvent[],
+): void {
+  if (s.phase === 'WARP') {
+    // §9: the life is lost at the collision, but the level still counts as
+    // complete (its bonus was already awarded) and the descent is NOT
+    // replayed (D16): lives remaining → the next level begins immediately
+    // (WARP→PLAYING, which records maxLevelReached via beginLevel); last
+    // life → WARP→GAME_OVER (maxLevelReached does NOT advance).
+    s.lives -= 1;
+    if (s.lives > 0) {
+      beginLevel(s, s.level + 1, cfg);
+      enterPlaying(s, cfg);
+    } else {
+      enterGameOver(s, cfg);
+    }
+    return;
+  }
+  // PLAYING death → GET_READY / GAME_OVER lands in Task 5.3.
+  void events;
+}
+
 // §10 transitions — step 9 of the tick order. Menu states act ONLY on the
 // edge-triggered `confirm`/`back` intents, never the held `fire` gameplay
 // boolean (C10). Runs once per tick; at most one transition fires.
@@ -187,9 +213,17 @@ export function transition(
       break;
     }
     case 'PLAYING':
-    case 'GET_READY':
+    case 'GET_READY': {
+      // Death/get-ready/quit edges land in Tasks 5.3/6.x.
+      break;
+    }
     case 'WARP': {
-      // Death/wave/warp/quit edges land in Tasks 5.x/6.x.
+      // §9: on reaching the bottom the next level begins (WARP → PLAYING).
+      // The level banner/fade-in are render-side with no sim effect.
+      if (s.warpDepth >= 1) {
+        beginLevel(s, s.level + 1, cfg);
+        enterPlaying(s, cfg);
+      }
       break;
     }
     case 'GAME_OVER': {

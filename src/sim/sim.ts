@@ -23,6 +23,7 @@ import { hashState } from './hash';
 import {
   enterWarp,
   maxStartLevel,
+  resolveDeath,
   transition,
   type InitialSave,
   type SimState,
@@ -92,15 +93,11 @@ function tickCombat(
   s: SimState,
   input: InputSnapshot,
   cfg: GameConfig,
+  ctx: TickCtx,
   events: SimEvent[],
   benchMode: boolean,
 ): void {
   const params = paramsForLevel(s.level, cfg.difficulty);
-  // Per-tick transients (never hashed): kill points accumulated by steps
-  // 3–5 for the single step-6 bonus-life pass, and the playerDiedThisTick
-  // flag steps 4–5 set (§6 bonus-life rule; Task 5.3 wires it to the
-  // life-decrement + GET_READY transition).
-  const ctx: TickCtx = { points: 0, playerDied: false };
   stepApplyInput(s, input, cfg, events); // 1 (Task 3.2)
   stepAdvanceEntities(s, cfg, params, events, benchMode); // 2 (Tasks 3.2/4.x)
   stepPlayerShotCollisions(s, cfg, params, ctx, events, benchMode); // 3 (Tasks 3.2/4.x)
@@ -188,6 +185,11 @@ function stepAdvanceEntities(
         }
       }
     }
+  }
+
+  // Warp descent (§9): the Blaster flies down the well at descentSpeed.
+  if (s.phase === 'WARP') {
+    s.warpDepth = Math.min(1, s.warpDepth + cfg.tuning.descentSpeed * TICK_SEC);
   }
 
   advanceShots(s.playerShots, cfg.tuning.shotSpeed, 1); // rim → bottom
@@ -465,6 +467,29 @@ function stepContactLethality(
       break;
     }
   }
+  // Warp-spike lethality (§9): §6.7 swept rule on the player's lane —
+  // the Blaster is a POINT sweeping [prevWarpDepth, warpDepth] against the
+  // spike body [topDepth, 1]. A same-tick trim (step 3) that pushed the top
+  // out of reach already saved the player before this runs.
+  if (s.phase === 'WARP') {
+    for (const sp of s.spikes) {
+      if (sp.lane !== pl) continue;
+      if (
+        sweptOverlap(
+          s.prevWarpDepth,
+          s.warpDepth,
+          cfg.tuning.halfExtents.blaster,
+          sp.topDepth,
+          1,
+          0,
+        )
+      ) {
+        killPlayer(ctx, events);
+      }
+      break; // at most one spike per lane
+    }
+  }
+
   // Pulse lethality (§6.5/§5(c)): during the pulse each PARTICIPATING
   // Pulsar's lane is electrified along its full length for the whole
   // duration — entering mid-pulse kills. A lane de-electrifies the instant
@@ -532,10 +557,20 @@ function makeSim(s: SimState, cfg: GameConfig, benchMode: boolean): Sim {
       // prevs are snapshotted by their own movement in step 2.
       s.prevRimPos = s.rimPos;
       s.prevWarpDepth = s.warpDepth;
+      // Per-tick transients (never hashed): kill points from steps 3–5 for
+      // the single step-6 bonus-life pass, and the playerDiedThisTick flag
+      // steps 4–5 set (§6).
+      const ctx: TickCtx = { points: 0, playerDied: false };
       if (s.phase === 'PLAYING' || s.phase === 'WARP') {
-        tickCombat(s, input, cfg, events, benchMode);
+        tickCombat(s, input, cfg, ctx, events, benchMode);
       }
-      transition(s, input, cfg, events); // §6 step 9
+      // §6 step 9: a death tick resolves the death INSTEAD of the normal
+      // transition pass.
+      if (ctx.playerDied) {
+        resolveDeath(s, cfg, events);
+      } else {
+        transition(s, input, cfg, events);
+      }
       return { events };
     },
     getState(): Readonly<SimState> {
