@@ -918,7 +918,7 @@ the next level.)
 - [ ] **Test (§13 UI-navigation area):** selector step = 1 per ±1.0 accumulated
   lanes, ≤ 1 per UI-step interval, accumulator reset on emit and cleared on
   zero-cross/state entry (held-then-release emits no backlog); level-select opens at
-  `max(9,maxLevelReached)`, clamps 1..max (no wrap); high-score entry over
+  level 1, clamps 1..`max(9,maxLevelReached)` (no wrap); high-score entry over
   space,A–Z,0–9 (default A, **wraps** at both ends), confirm locks+advances, third
   confirm → TITLE, back returns a slot (**inert on the first slot**). **All menu
   states (TITLE/LEVEL_SELECT/HIGH_SCORE_ENTRY) act on the edge-triggered
@@ -926,8 +926,9 @@ the next level.)
   defines menu "confirm" as the fire button — space/Enter — but the *snapshot* carries
   it as the one-per-press `confirm` edge; decision C10); TITLE click carve-out =
   confirm; qualification predicate (≤10, ties rank new above equal); **on
-  TITLE→LEVEL_SELECT entry `selector` initializes to `max(9, maxLevelReached)`** (the
-  default open value, §8.5) and `selectorAccum` clears. Commit.
+  TITLE→LEVEL_SELECT entry `selector` initializes to `1`** (the default start
+  level; the player steps up to `max(9, maxLevelReached)`, §8.5) and
+  `selectorAccum` clears. Commit.
 
 ### Task 6.2: Quit-to-title + full transition set
 

@@ -24,7 +24,6 @@ import { hashState } from './hash';
 import {
   applyQuit,
   enterWarp,
-  maxStartLevel,
   resolveDeath,
   transition,
   type InitialSave,
@@ -73,7 +72,7 @@ function makeInitialState(
     beatTimer: 0,
     fireCooldown: 0,
     maxLevelReached,
-    selector: 1,
+    selector: 1, // LEVEL_SELECT opens at level 1 (§10)
     selectorAccum: 0,
     selectorTimer: 0,
     hsInitials: [1, 1, 1],
@@ -81,7 +80,6 @@ function makeInitialState(
     highScores: save.highScores.map((e) => ({ ...e })),
     rng: makeRng(seed),
   };
-  s.selector = maxStartLevel(s);
   return s;
 }
 

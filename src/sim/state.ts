@@ -109,7 +109,7 @@ export function enterPlaying(s: SimState, cfg: GameConfig): void {
 
 function enterLevelSelect(s: SimState): void {
   s.phase = 'LEVEL_SELECT';
-  s.selector = maxStartLevel(s); // opens at the highest allowed level (§10)
+  s.selector = 1; // opens at level 1; the player steps up to maxStartLevel (§10)
   s.selectorAccum = 0; // cleared on state entry (§8.3)
   s.selectorTimer = 0;
 }

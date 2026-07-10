@@ -578,10 +578,10 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
   Escape, F3 — keep their global functions and do not start the game), top-10
   high-score table, control summary, mute indicator. No AI demo game.
 - **Level select:** starting-level selector (§8.5) via UI navigation; the
-  selector opens at the highest allowed level (`max(9, maxLevelReached)`) so
-  returning players start where they left off, and ranges down to 1. The
-  selector clamps at 1 and at the maximum (it does not wrap); left decreases the
-  level, right increases it.
+  selector opens at level 1 (the default start) and the player may step it up to
+  the highest allowed level (`max(9, maxLevelReached)`). The selector clamps at 1
+  and at the maximum (it does not wrap); left decreases the level, right
+  increases it.
 - **Playing:** the game. HUD: score (top left), high score (top center), lives
   and Superzapper pips, level number.
 - **Game over:** "GAME OVER" over the final well for the game-over beat (§8.3);

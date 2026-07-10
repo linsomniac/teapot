@@ -21,7 +21,7 @@ describe('createSim (§12.2, I14)', () => {
     const s = createSim(makeLiveConfig(), 1).getState();
     expect(s.maxLevelReached).toBe(1);
     expect(s.highScores).toEqual([]);
-    expect(s.selector).toBe(9); // max(9, 1)
+    expect(s.selector).toBe(1); // LEVEL_SELECT opens at 1 (§10)
   });
 
   it('copies the injected save (no aliasing of app-owned arrays)', () => {

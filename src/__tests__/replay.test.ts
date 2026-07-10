@@ -33,7 +33,7 @@ const GOLDEN = {
   lives: 0,
   superzapper: 2,
   census: 0, // deaths returned everything to budget before the final title
-  ticks: 3975,
+  ticks: 4151, // longer LEVEL_SELECT climb (selector opens at 1, §10)
 };
 
 function freshConfig(): GameConfig {
@@ -76,10 +76,11 @@ function runGolden(): RunResult {
         }
         break;
       case 'LEVEL_SELECT':
-        // Step the selector down one and back up (uiMove), then start.
-        if (lsTicks < 12) input.move = -0.45;
-        else if (lsTicks < 24) input.move = 0.45;
-        else if (lsTicks === 30) input.confirm = true;
+        // Selector opens at 1 (§10); climb to the top (uiMove) so the first
+        // wave starts at the injected max level (all five enemy kinds), then
+        // start. 200 up-held ticks clears the rate-limited climb to 17.
+        if (lsTicks < 200) input.move = 0.45;
+        else if (lsTicks === 206) input.confirm = true;
         lsTicks++;
         break;
       case 'PLAYING': {

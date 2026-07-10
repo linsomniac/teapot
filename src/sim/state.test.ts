@@ -30,19 +30,21 @@ describe('state machine skeleton (§10)', () => {
     expect(sim.getState().phase).toBe('TITLE');
   });
 
-  it('TITLE → LEVEL_SELECT on confirm, selector opens at max(9, maxLevelReached)', () => {
+  it('TITLE → LEVEL_SELECT on confirm, selector opens at level 1', () => {
     const sim = createSim(cfg, 1);
     const { events } = sim.tick(makeInput({ confirm: true }));
     expect(sim.getState().phase).toBe('LEVEL_SELECT');
-    expect(sim.getState().selector).toBe(9); // default save: max(9, 1)
+    expect(sim.getState().selector).toBe(1); // opens at 1 (§10)
     expect(events).toContainEqual({ type: 'uiConfirm' });
 
+    // A higher maxLevelReached only raises the ceiling — the opening value
+    // is still 1 (the player steps up from there).
     const returning = createSim(cfg, 1, {
       maxLevelReached: 15,
       highScores: [],
     });
     returning.tick(makeInput({ confirm: true }));
-    expect(returning.getState().selector).toBe(15);
+    expect(returning.getState().selector).toBe(1);
   });
 
   it('menus ignore the held fire boolean — only the confirm edge acts (C10)', () => {
@@ -73,7 +75,8 @@ describe('state machine skeleton (§10)', () => {
     s.lives = 0;
     s.livesGranted = 3;
     sim.tick(makeInput({ confirm: true })); // TITLE → LEVEL_SELECT
-    expect(s.selector).toBe(12);
+    expect(s.selector).toBe(1); // opens at 1 (§10)
+    s.selector = 12; // player steps the selector up to 12
     sim.tick(makeInput({ confirm: true })); // LEVEL_SELECT → PLAYING
     expect(s.phase).toBe('PLAYING');
     expect(s.level).toBe(12);
@@ -88,7 +91,9 @@ describe('state machine skeleton (§10)', () => {
 
   it('starting above the old maxLevelReached raises it (§8.5)', () => {
     const sim = createSim(cfg, 1); // default save: maxLevelReached 1
-    sim.tick(makeInput({ confirm: true }));
+    const s = mutableState(sim);
+    sim.tick(makeInput({ confirm: true })); // TITLE → LEVEL_SELECT (opens at 1)
+    s.selector = 9; // player raises the selector above the old max
     sim.tick(makeInput({ confirm: true })); // starts at selector 9
     expect(sim.getState().maxLevelReached).toBe(9);
   });
