@@ -29,6 +29,17 @@ export function occupancyLane(e: Enemy, closed: boolean): number {
   return playerLane(e.lane, closed);
 }
 
+// AIDEV-NOTE: SINGLE definition of Flipper rim arrival (§5(b)/§6.1, Task 2).
+// A bowtie has a half-length along the lane (flipperHalfHeight in depth units);
+// it ARRIVES at the rim when its top corners touch depth 0, i.e. when its
+// CENTER is within flipperHalfHeight of the rim — not at depth 0. Used by the
+// climb clamp, the post-flip re-arm ternary, and the step-5 contact filter so
+// the arrival depth has ONE definition. Fuseball rim residence stays depth<=0
+// (this predicate is Flipper-only; callers guard on kind).
+export function flipperAtRim(e: Enemy, cfg: GameConfig): boolean {
+  return e.depth <= cfg.tuning.flipperHalfHeight;
+}
+
 export function startFlip(e: Enemy, toLane: number): void {
   e.flip = { from: e.lane, to: toLane, progress: 0 };
   // Depth is frozen for the whole animation: update functions skip climb
@@ -110,14 +121,14 @@ export function updateFlipper(
   if (e.flip) {
     if (advanceFlip(e, t.flipAnimTime)) {
       // Timer runs from the end of the flip (§6); rim flips re-arm faster.
-      e.flipTimer = e.depth <= 0 ? rimInterval : lp.flipInt;
+      e.flipTimer = flipperAtRim(e, cfg) ? rimInterval : lp.flipInt;
     }
     return; // depth frozen during the animation
   }
 
   e.flipTimer -= TICK_SEC;
 
-  if (e.depth <= 0) {
+  if (flipperAtRim(e, cfg)) {
     // Rim-resident: chase the player along the rim every rimFlipInterval,
     // shortest arc re-evaluated before each flip (§6.1).
     if (e.flipTimer <= 0) {
@@ -153,10 +164,12 @@ export function updateFlipper(
 
   // Climb toward the rim (§6.1/§8.3).
   e.depth -= climbSpeed('flipper', lp, cfg) * TICK_SEC;
-  if (e.depth <= 0) {
-    e.depth = 0;
-    // Rim arrival: discard any pending mid-well timer; the first rim flip
-    // occurs rimFlipInterval after arrival (§6).
+  if (flipperAtRim(e, cfg)) {
+    // Rim arrival: the top corners reached depth 0, so clamp the CENTER to
+    // its rest depth flipperHalfHeight (NOT 0 — the bowtie sits just below the
+    // top line). Discard any pending mid-well timer; the first rim flip occurs
+    // rimFlipInterval after arrival (§6).
+    e.depth = t.flipperHalfHeight;
     e.flipTimer = rimInterval;
   }
 }

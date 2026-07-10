@@ -11,7 +11,7 @@ import { geometryIndexForLevel, paletteIndexForLevel } from './levels';
 import { clampRimDelta, normalizeRimPos, playerLane } from './well';
 import { paramsForLevel, type LevelParams } from './difficultyCurve';
 import { advanceShots, fireEnemyShots } from './enemies/shots';
-import { occupancyLane, updateFlipper } from './enemies/flipper';
+import { flipperAtRim, occupancyLane, updateFlipper } from './enemies/flipper';
 import { splitTanker, updateTanker } from './enemies/tanker';
 import { trimOrKill, updateSpiker } from './enemies/spiker';
 import { updateFuseball } from './enemies/fuseball';
@@ -465,8 +465,16 @@ function stepContactLethality(
   const pl = playerLane(s.rimPos, s.closed);
   for (const e of s.enemies) {
     if (e.flip !== null) continue; // crossing a mid-flip lane is safe (§5(b))
-    if (e.depth > 0) continue; // rim residents only
-    if (e.kind !== 'flipper' && e.kind !== 'fuseball') continue;
+    // Rim residents only, with kind-specific arrival depth: a Flipper arrives
+    // when its top corners touch depth 0 (center ≤ flipperHalfHeight, §5(b)/
+    // Task 2); a Fuseball's rim residence stays depth<=0 (§6.4).
+    if (e.kind === 'flipper') {
+      if (!flipperAtRim(e, cfg)) continue;
+    } else if (e.kind === 'fuseball') {
+      if (e.depth > 0) continue;
+    } else {
+      continue; // other kinds never contact-kill at the rim
+    }
     // A crawling Fuseball's lane rounds like the player's (§6.4).
     if (occupancyLane(e, s.closed) === pl) {
       killPlayer(ctx, events);

@@ -152,9 +152,13 @@ Non-goals and `loop/spec-decisions`).
   (a) an enemy shot crosses depth 0 on the player's lane;
   (b) the player's lane equals a **non-flipping** rim-resident Flipper's or
       Fuseball's lane — symmetric contact, regardless of which entity moved. A
-      mid-flip rim enemy is lethal only when its flip **completes** onto the
-      player's lane (§6 flip mechanics: the occupancy halves exist for shot
-      collision only) — crossing a mid-flip enemy's lane is safe;
+      climbing Flipper (bowtie) reaches the rim — and becomes lethal — when its
+      **top corners** touch depth 0, i.e. once its center is within
+      `flipperHalfHeight` (§8.3) of the rim; it comes up *through* the player's
+      position harmlessly until then. A mid-flip rim enemy is lethal only when
+      its flip **completes** onto the player's lane (§6 flip mechanics: the
+      occupancy halves exist for shot collision only) — crossing a mid-flip
+      enemy's lane is safe;
   (c) a Pulsar's lane is electrified (§6.5) while it is the player's lane — for
       the **entire** pulse duration, including moving onto it mid-pulse;
   (d) the Blaster collides with a spike during warp descent (§9).
@@ -257,9 +261,11 @@ come from the difficulty model (§8). Global combat rules:
   `flipAnimTime`). Mid-well flips follow the flip-targeting rule (§6, partly
   player-seeking and partly random, `flipSeekBias`); a Flipper already on the
   player's lane does not flip, it climbs (and redraws its timer, §6).
-- On reaching the rim it stays there and flips lane-to-lane along the rim toward
-  the player every `rimFlipInterval` (= 0.5 × FlipInt — the rim chase is faster
-  than the climb), choosing the shortest arc re-evaluated before each rim flip
+- It reaches the rim when its top corners touch depth 0 — its center clamps to
+  rest depth `flipperHalfHeight` (§8.3), sitting just below the top line (the
+  player sits just above it). There it stays and flips lane-to-lane along the rim
+  toward the player every `rimFlipInterval` (= 0.5 × FlipInt — the rim chase is
+  faster than the climb), choosing the shortest arc re-evaluated before each rim flip
   (ties broken clockwise). Open-well ends bound the chase. Rim contact is
   symmetric per §5(b); a completed rim flip onto the player's lane kills, and
   the player can shoot a Flipper mid-flip before it lands — the classic close
@@ -457,6 +463,7 @@ attempts (§6; only non-Spiker enemies count toward MaxOnWell).
 | fireInterval (player) | 0.18 s (must stay > flipAnimTime/2 + (enemyHalfExtent + shotHalfExtent)/shotSpeed + one tick ≈ 0.125 + 0.02 + 0.017 ≈ 0.162 s, so a rim-flip landing is not auto-covered by the hold-fire stream — D40) |
 | max player shots | 8 |
 | flipAnimTime | 0.25 s |
+| flipperHalfHeight | 0.045 depth (bowtie half-length along the lane; the Flipper's rim arrival depth — top corners touch depth 0 when the center reaches it, §5(b)/§6.1. Kept < minimum enemy firing depth so rim residents stay ineligible to fire; matched by the render along-lane half-extent so lethal geometry and visuals agree) |
 | flipSeekBias | 0.5 (fraction of mid-well flips that seek the player; the rest step to a random adjacent lane — governs whether hold-fire camping is survivable; tune against the anti-camping test, §13) |
 | rimFlipInterval | 0.5 × FlipInt (≥ flipAnimTime by the §8.2 table constraint) |
 | climb multipliers (× Climb) | Flipper 1.0, Tanker 0.6, Spiker 0.8, Fuseball 0.5, Pulsar 0.9 |
@@ -618,7 +625,10 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
   rounded lane.
 - **Per-enemy visual identity:** each enemy type has a distinct stroked
   silhouette and a fixed canonical color independent of the level band —
-  Flippers red (bowtie silhouette), Tankers purple (diamond), Spikers and their
+  Flippers red (bowtie silhouette, drawn with its wide axis **across the lane**
+  — on the lane's local chord — never screen-horizontal; a mid-flip bowtie's
+  orientation rolls continuously from the source lane's chord to the
+  destination's), Tankers purple (diamond), Spikers and their
   spikes green (spinning spiral), Fuseballs multicolor shimmer (spark ball),
   Pulsars cyan flashing toward white during telegraph (zigzag coil). Enemy
   shots are small bright dashes distinct from player shots. The Superzapper has

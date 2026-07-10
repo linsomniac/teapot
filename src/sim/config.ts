@@ -48,6 +48,8 @@ export interface Tuning {
   fireInterval: number;
   maxPlayerShots: number;
   flipAnimTime: number;
+  flipperHalfHeight: number; // bowtie half-length ALONG the lane, in depth units:
+  // the rim arrival depth (top corners touch depth 0 when center ≤ this — §5(b))
   rimFlipFactor: number; // 0.5 (rimFlipInterval = ·flipInt)
   climbMul: Record<EnemyKind, number>;
   fuseballRimSpeed: number;

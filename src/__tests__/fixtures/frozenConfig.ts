@@ -1404,6 +1404,7 @@ export const FROZEN_CONFIG: GameConfig = {
     fireInterval: 0.18,
     maxPlayerShots: 8,
     flipAnimTime: 0.25,
+    flipperHalfHeight: 0.045,
     rimFlipFactor: 0.5,
     climbMul: {
       flipper: 1,

@@ -266,7 +266,16 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
           if (any) strokeWithGlow(ctx, '#d9fbff', 2.5, opts.lowGlow);
         }
 
-        drawEnemies(ctx, s.enemies, g, pvp, alpha, dc, opts.lowGlow);
+        drawEnemies(
+          ctx,
+          s.enemies,
+          g,
+          pvp,
+          alpha,
+          dc,
+          opts.lowGlow,
+          cfg.tuning.flipperHalfHeight,
+        );
         drawShots(
           ctx,
           s.playerShots,

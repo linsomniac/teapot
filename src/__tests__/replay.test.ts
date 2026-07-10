@@ -27,13 +27,15 @@ const MAX_TICKS = 200_000;
 // AIDEV-NOTE: golden values — re-record ONLY on an intentional, reviewed
 // rule change or engine upgrade (Node pinned via .nvmrc/engines, I2/C5/C7).
 const GOLDEN = {
-  hash: 105486080,
+  hash: 3130648201,
   score: 30140,
   level: 18,
   lives: 0,
   superzapper: 2,
   census: 0, // deaths returned everything to budget before the final title
-  ticks: 4151, // longer LEVEL_SELECT climb (selector opens at 1, §10)
+  ticks: 4369, // re-recorded for Task 2 (Flipper top-edge rim arrival at
+  // flipperHalfHeight — earlier rim contact reshapes the combat timeline;
+  // score/level/lives/census unchanged since Flipper scoring is depth-agnostic)
 };
 
 function freshConfig(): GameConfig {

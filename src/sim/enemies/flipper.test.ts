@@ -152,12 +152,15 @@ describe('climb + rim arrival (§6.1)', () => {
     expect(e.depth).toBeCloseTo(0.8 - lp1.climb * 2 * TICK_SEC, 12);
   });
 
-  it('rim arrival clamps depth to 0, discards the pending timer, arms rimFlipInterval', () => {
+  it('rim arrival clamps depth to flipperHalfHeight (not 0), discards the pending timer, arms rimFlipInterval', () => {
     const { sim, s } = playingSim(cfg, 1);
-    const e = flipperAt(2, 0.001, { flipTimer: 5 }); // pending mid-well timer
+    const hh = cfg.tuning.flipperHalfHeight;
+    // Just above the rim rest depth so ONE tick's climb crosses it — arrival
+    // is when the top corners touch depth 0, i.e. the center reaches hh (Task 2).
+    const e = flipperAt(2, hh + 0.001, { flipTimer: 5 }); // pending mid-well timer
     s.enemies = [e];
     sim.tick(makeInput());
-    expect(e.depth).toBe(0);
+    expect(e.depth).toBe(hh);
     expect(e.flipTimer).toBe(cfg.tuning.rimFlipFactor * lp1.flipInt);
   });
 
@@ -206,7 +209,7 @@ describe('rim lethality (§5(b)) and the same-tick save (§6 tick order)', () =>
 
   it('symmetric contact: the player sliding onto a resting rim Flipper dies', () => {
     const { sim, s } = playingSim(cfg, 1);
-    s.enemies = [flipperAt(5, 0)];
+    s.enemies = [flipperAt(5, cfg.tuning.flipperHalfHeight)]; // resting rim depth
     s.rimPos = 5; // player moved onto the enemy's lane
     const { events } = sim.tick(makeInput());
     expect(events).toContainEqual({ type: 'playerDied' });
@@ -234,6 +237,80 @@ describe('rim lethality (§5(b)) and the same-tick save (§6 tick order)', () =>
     s.enemies = [flipperAt(7, 0, { flip: { from: 7, to: 8, progress: 0.95 } })];
     const { events } = sim.tick(makeInput());
     expect(events).toContainEqual({ type: 'playerDied' });
+  });
+});
+
+// Task 2 — top-edge rim arrival geometry: a bowtie arrives (and turns lethal)
+// when its TOP CORNERS touch depth 0 (center within flipperHalfHeight), not
+// when the center reaches depth 0. It comes up THROUGH the player harmlessly
+// until then; mid-flip stays safe on both lanes; the player can still shoot a
+// mid-flip bowtie on their lane before it lands (user point 4, preserved).
+describe('top-edge rim arrival + lethality (Task 2)', () => {
+  const hh = cfg.tuning.flipperHalfHeight;
+
+  it('a climbing Flipper under the player is harmless until its center reaches the rim, then kills', () => {
+    const { sim, s } = playingSim(cfg, 1); // player at lane 8
+    const e = flipperAt(8, hh + 0.05, { flipTimer: 100 }); // directly under, still climbing
+    s.enemies = [e];
+    let died = false;
+    let guard = 0;
+    while (!died && guard++ < 200) {
+      const before = e.depth;
+      const { events } = sim.tick(makeInput());
+      died = events.some((ev) => ev.type === 'playerDied');
+      if (died) {
+        // Death lands exactly on the arrival tick: center clamped to hh.
+        expect(before).toBeGreaterThan(hh); // was still above the rim last tick
+        expect(e.depth).toBe(hh);
+      } else {
+        expect(e.depth).toBeGreaterThan(hh); // never lethal while above the rim
+      }
+    }
+    expect(died).toBe(true);
+  });
+
+  it('mid-flip is safe on BOTH the source and destination lanes (§5(b))', () => {
+    for (const plLane of [7, 8]) {
+      const { sim, s } = playingSim(cfg, 1);
+      s.rimPos = plLane;
+      const e = flipperAt(7, hh, { flip: { from: 7, to: 8, progress: 0.2 } });
+      s.enemies = [e];
+      const { events } = sim.tick(makeInput());
+      expect(e.flip, `player on lane ${plLane}`).not.toBeNull(); // still animating
+      expect(
+        events.some((ev) => ev.type === 'playerDied'),
+        `player on lane ${plLane}`,
+      ).toBe(false);
+    }
+  });
+
+  it('the player can shoot a mid-flip Flipper on their lane before it lands (user point 4)', () => {
+    const { sim, s } = playingSim(cfg, 1); // player lane 8
+    // Flipping toward the player; progress 0.5 → occupancy is the destination
+    // (lane 8) and the flip is NOT complete after this tick (killed mid-flip).
+    const e = flipperAt(7, hh, { flip: { from: 7, to: 8, progress: 0.5 } });
+    s.enemies = [e];
+    s.playerShots = [{ lane: 8, depth: hh, prevDepth: hh }];
+    const { events } = sim.tick(makeInput());
+    expect(s.enemies).toHaveLength(0); // shot connected on the occupancy lane
+    expect(events.some((ev) => ev.type === 'playerDied')).toBe(false); // never landed
+    const killed = events.find(
+      (ev): ev is Extract<SimEvent, { type: 'enemyKilled' }> =>
+        ev.type === 'enemyKilled',
+    )!;
+    expect(killed.lane).toBe(8);
+  });
+
+  it('a completed RIM flip re-arms via the predicate to rimFlipInterval', () => {
+    const { sim, s } = playingSim(cfg, 1); // player lane 8 — clear of lane 6
+    const e = flipperAt(5, hh, { flip: { from: 5, to: 6, progress: 0.95 } });
+    s.enemies = [e];
+    let guard = 0;
+    while (e.flip !== null && guard++ < 100) sim.tick(makeInput());
+    expect(e.flip).toBeNull();
+    expect(e.lane).toBe(6);
+    // depth frozen at hh through the flip → flipperAtRim true → rim re-arm.
+    expect(e.flipTimer).toBe(cfg.tuning.rimFlipFactor * lp1.flipInt);
   });
 });
 
