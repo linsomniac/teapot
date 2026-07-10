@@ -644,9 +644,10 @@ export function advanceShots(shots: Shot[], speed: number, dir: 1 | -1): void; /
 ```
 - [ ] **Test (§13 player-firing area):** movement applies `input.move` to `rimPos`
   (keyboard delta), clamps on open wells; fire spawns a shot at `playerLane`,
-  depth = 0 in PLAY / warpDepth in WARP; held fire spawns at most one shot per
-  tick by scanning a fixed eight-slot pool 7→0; full pools pause until impact or
-  range expiry frees a slot, with no cooldown/regeneration clock; a shot reaching
+  depth = 0 in PLAY / warpDepth in WARP; fire is immediate on press, then held
+  fire spawns at most one shot every second tick by scanning a fixed eight-slot
+  pool 7→0; release resets the cadence; full pools pause until impact or
+  range expiry frees a slot, with no ammo regeneration clock; a shot reaching
   depth 1 despawns; shots are cleared on every state transition (§6).
   Interpolation snapshot: **at the start of each tick (before applying movement) set
   `prevRimPos = rimPos` and `prevWarpDepth = warpDepth`**, then apply this tick's

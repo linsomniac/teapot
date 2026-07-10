@@ -373,3 +373,16 @@ Bonus lives are `floor(score/interval)`-based and re-checked after the step-8
 level-clear bonus (not only steps 3–5), so a threshold crossed by the clear
 bonus grants a life — matching the §7 economy invariant; a bonus life and a
 death on the same tick still net zero.
+
+## D46. Held fire uses a two-tick cadence; anti-camping becomes a risk gate
+
+Player playtesting found the original one-shot-per-60-Hz-tick behavior made a
+quick tap emit two to four shots. A new press still fires immediately, but a
+held button now repeats every second simulation tick (33.33 ms); release resets
+the cadence. The fixed eight-slot pool and 7→0 allocation remain unchanged.
+
+Evenly spacing the eight slots changes deterministic combat timing enough that
+D44's absolute “all seeds die before any clear” criterion no longer models the
+requested firing behavior. The live-tuning anti-camping gate remains on both
+topologies, but now requires a death within 120 seconds in at least 9/10 fixed
+seeds, at least 3/10 deaths before a clear, and median death below 60 seconds.

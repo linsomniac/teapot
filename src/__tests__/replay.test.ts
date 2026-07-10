@@ -27,15 +27,15 @@ const MAX_TICKS = 200_000;
 // AIDEV-NOTE: golden values — re-record ONLY on an intentional, reviewed
 // rule change or engine upgrade (Node pinned via .nvmrc/engines, I2/C5/C7).
 const GOLDEN = {
-  hash: 3571258131,
+  hash: 1349261043,
   score: 30140,
   level: 18,
   lives: 0,
   superzapper: 2,
   census: 0, // deaths returned everything to budget before the final title
-  ticks: 4083, // re-recorded for the fixed eight-slot held-fire algorithm;
-  // faster slot reuse reshapes the combat timeline while score/level/lives/
-  // census remain unchanged.
+  ticks: 3594, // re-recorded for the two-tick, fixed eight-slot fire cadence;
+  // the slower held-fire cadence reshapes the combat timeline while
+  // score/level/lives/census remain unchanged.
 };
 
 function freshConfig(): GameConfig {

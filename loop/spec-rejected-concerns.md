@@ -27,7 +27,8 @@ the picture.
 - **Raised by:** anticipated follow-on to the enemy-shot-farming finding (round 1,
   gameplay dimension); pre-emptively documented.
 - **Rejected because:** trim points are rate-bounded by player fire rate
-  (under ~6 pts/s at fireInterval 0.18 s vs. thousands/minute from normal play),
+  (at most 30 pts/s at the two-tick cadence, and lower when the eight slots are
+  occupied, vs. thousands/minute from normal play),
   require standing on a spiked lane, and the wave cannot stall indefinitely for farming
   purposes without the player forgoing all meaningful scoring. Enemy-shot farming
   was the real exploit and was fixed by setting enemy-shot points to 0 (D14).

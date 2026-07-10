@@ -10,7 +10,11 @@ import { advanceShots } from './enemies/shots';
 import { makeFlipper } from './enemies/flipper';
 import { paramsForLevel } from './difficultyCurve';
 import { makeRng } from './rng';
-import { PLAYER_SHOT_SLOTS, TICK_SEC } from './types';
+import {
+  PLAYER_FIRE_INTERVAL_TICKS,
+  PLAYER_SHOT_SLOTS,
+  TICK_SEC,
+} from './types';
 import { makeLiveConfig } from '../__tests__/fixtures/liveConfig';
 import { makeInput } from '../__tests__/fixtures/input';
 
@@ -87,13 +91,23 @@ describe('player firing (§5)', () => {
     expect(s.playerShots[0]!.prevDepth).toBe(0.5);
   });
 
-  it('held fire creates exactly one shot per tick until all eight slots are full', () => {
+  it('held fire creates one shot every two ticks until all eight slots are full', () => {
     const { sim, s } = playingSim(9);
     const allocated: number[] = [];
     for (let i = 0; i < PLAYER_SHOT_SLOTS; i++) {
-      const { events } = sim.tick(makeInput({ fire: true }));
-      expect(events.filter((e) => e.type === 'playerShot')).toHaveLength(1);
+      const fireTick = sim.tick(makeInput({ fire: true }));
+      expect(
+        fireTick.events.filter((e) => e.type === 'playerShot'),
+      ).toHaveLength(1);
       allocated.push(s.playerShots[s.playerShots.length - 1]!.slot!);
+      if (i < PLAYER_SHOT_SLOTS - 1) {
+        for (let gap = 1; gap < PLAYER_FIRE_INTERVAL_TICKS; gap++) {
+          const gapTick = sim.tick(makeInput({ fire: true }));
+          expect(
+            gapTick.events.filter((e) => e.type === 'playerShot'),
+          ).toHaveLength(0);
+        }
+      }
     }
     expect(allocated).toEqual([7, 6, 5, 4, 3, 2, 1, 0]);
     expect(s.playerShots).toHaveLength(PLAYER_SHOT_SLOTS);
@@ -102,6 +116,20 @@ describe('player firing (§5)', () => {
     expect(blocked.events.filter((e) => e.type === 'playerShot')).toHaveLength(
       0,
     );
+  });
+
+  it('release resets the cadence so separate taps each fire immediately', () => {
+    const { sim, s } = playingSim(9);
+    expect(sim.tick(makeInput({ fire: true })).events).toContainEqual({
+      type: 'playerShot',
+    });
+    expect(sim.tick(makeInput()).events).not.toContainEqual({
+      type: 'playerShot',
+    });
+    expect(sim.tick(makeInput({ fire: true })).events).toContainEqual({
+      type: 'playerShot',
+    });
+    expect(s.playerShots).toHaveLength(2);
   });
 
   it('never exceeds the hard cap of exactly eight live player shots', () => {
@@ -203,20 +231,23 @@ describe('shot bookkeeping (§6)', () => {
   it('clearAllShots empties both sides', () => {
     const { s } = playingSim(1);
     s.playerShots = [{ lane: 1, depth: 0.4, prevDepth: 0.4 }];
+    s.playerFireCooldownTicks = 1;
     s.enemyShots = [{ lane: 2, depth: 0.6, prevDepth: 0.6 }];
     clearAllShots(s);
     expect(s.playerShots).toEqual([]);
+    expect(s.playerFireCooldownTicks).toBe(0);
     expect(s.enemyShots).toEqual([]);
   });
 
   it('beginLevel clears all eight physical slots for the next level', () => {
     const { sim, s } = playingSim(9);
-    for (let i = 0; i < PLAYER_SHOT_SLOTS; i++) {
+    for (let i = 0; i < PLAYER_SHOT_SLOTS * PLAYER_FIRE_INTERVAL_TICKS; i++) {
       sim.tick(makeInput({ fire: true }));
     }
     expect(s.playerShots).toHaveLength(PLAYER_SHOT_SLOTS);
     beginLevel(s, 10, cfg);
     expect(s.playerShots).toHaveLength(0);
+    expect(s.playerFireCooldownTicks).toBe(0);
     const { events } = sim.tick(makeInput({ fire: true }));
     expect(events).toContainEqual({ type: 'playerShot' });
   });

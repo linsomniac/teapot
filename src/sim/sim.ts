@@ -2,7 +2,11 @@
 // injected GameConfig + seed (+ optional InitialSave, I14) and advances ONLY
 // via tick(inputSnapshot) — no browser APIs, no wall clock, no entropy.
 
-import { PLAYER_SHOT_SLOTS, TICK_SEC } from './types';
+import {
+  PLAYER_FIRE_INTERVAL_TICKS,
+  PLAYER_SHOT_SLOTS,
+  TICK_SEC,
+} from './types';
 import type { Enemy, InputSnapshot, Shot, SimEvent, Spike } from './types';
 import type { GameConfig } from './config';
 import { validateConfig } from './config';
@@ -62,6 +66,7 @@ function makeInitialState(
     paletteIndex: paletteIndexForLevel(1),
     enemies: [],
     playerShots: [],
+    playerFireCooldownTicks: 0,
     enemyShots: [],
     spikes: [],
     budget: { flipper: 0, tanker: 0, spiker: 0, fuseball: 0, pulsar: 0 },
@@ -126,16 +131,22 @@ function stepApplyInput(
   const delta = clampRimDelta(input.move, cfg.tuning.perTickClamp);
   s.rimPos = normalizeRimPos(s.rimPos + delta, s.closed);
 
-  // Firing: the button is a held level signal. Each tick may fill at most one
-  // of the eight physical slots, scanning 7→0 for the first free slot. There
-  // is no cooldown or ammo-regeneration clock: a slot becomes available only
-  // when its shot hits something, reaches the far wall, or combat is reset.
+  // Firing: the button is a held level signal. A fresh press fires immediately;
+  // sustained fire may fill at most one of the eight physical slots every
+  // PLAYER_FIRE_INTERVAL_TICKS, scanning 7→0 for the first free slot. Release
+  // clears the cadence so a new tap is always responsive. Slot availability is
+  // still governed solely by impact, range expiry, or combat reset.
   assignMissingPlayerShotSlots(s.playerShots);
   const freeSlot = firstFreePlayerShotSlot(s.playerShots);
-  if (input.fire && freeSlot !== null) {
+  if (!input.fire) {
+    s.playerFireCooldownTicks = 0;
+  } else if (s.playerFireCooldownTicks > 0) {
+    s.playerFireCooldownTicks -= 1;
+  } else if (freeSlot !== null) {
     const lane = playerLane(s.rimPos, s.closed);
     const depth = s.phase === 'WARP' ? s.warpDepth : 0;
     s.playerShots.push({ lane, depth, prevDepth: depth, slot: freeSlot });
+    s.playerFireCooldownTicks = PLAYER_FIRE_INTERVAL_TICKS - 1;
     events.push({ type: 'playerShot' });
   }
 

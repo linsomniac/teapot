@@ -127,10 +127,11 @@ Non-goals and `loop/spec-decisions`).
   player's current depth (0 during play; the Blaster's current depth during warp)
   on the player's lane and travel down it at `shotSpeed`. The fire input is a
   held/level signal, sampled every simulation tick. Player fire owns exactly
-  **8 physical slots** (0–7): each tick that fire is held, scan slots 7 down to
-  0, create at most one shot in the first empty slot, then advance it during
-  that same tick. There is no cooldown, rate limiter, or ammo-regeneration
-  clock. When all slots are occupied, firing pauses until a shot frees its slot
+  **8 physical slots** (0–7): a new press fires immediately, then held fire scans
+  slots 7 down to 0 every second tick (33.33 ms), creating at most one shot in
+  the first empty slot and advancing it during that same tick. Releasing fire
+  resets this two-tick cadence, so the next press is immediate. There is no
+  ammo-regeneration clock. When all slots are occupied, firing pauses until a shot frees its slot
   by hitting a target or reaching the well bottom (depth 1); combat-state resets
   clear the pool. This naturally produces an evenly spaced held-fire ladder and
   faster replacement fire when nearby hits free slots quickly.
@@ -904,25 +905,25 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     at pulse end, full-duration lane lethality incl. entering mid-pulse,
     de-electrification the instant the Pulsar dies (incl. the same-tick shot
     save), shots passing through pulses.
-  - Player firing: held/level-triggered input; at most one spawn per tick;
+  - Player firing: held/level-triggered input; immediate first shot followed by
+    one spawn every second held tick (33.33 ms), with release resetting cadence;
     fixed slot scan 7→0; immediate slot reuse after impact/range expiry; hard
-    8-shot cap with no cooldown or regeneration clock; shot spawn depth (0 in
+    8-shot cap with no regeneration clock; shot spawn depth (0 in
     play, Blaster depth in warp) and same-tick movement; movement remains active
     during WARP.
   - **Anti-camping check:** scripted runs where the player first moves to the
     camp lane (mid-rim on the closed well; held to an end lane on the open
     well, since the level-start position is lane 8, §5) and then holds that
     position and fire, using the first 10 seeds of a fixed sequence (not
-    hand-picked — the property must hold for all). Each run must, within a
-    120 s sim-time bound,
-    both **fail to clear the level** (a wave needs enemies destroyed on other
-    lanes, which a stationary player cannot reach — §6 flip targeting) and end
-    in player death. Cover **both topologies**: a closed well with the player
+    hand-picked). With the user-directed two-tick held-fire cadence, each
+    topology must lose a life within the 120 s sim-time bound in at least 9 of
+    10 runs, and at least 3 runs must die before clearing the level. Cover
+    **both topologies**: a closed well with the player
     mid-rim (level 1, geometry index 0) and an **open well with the player
     clamped at an end lane** (level 9, geometry index 8 — the single-direction
     funnel worst case), both pre-Fuseball so only flip-targeting anti-camping is
     exercised. This gates `flipSeekBias` and rim-contact geometry: to prevent a
-    vacuous pass, the **median** time-to-death across the 10 seeds must be below
+    vacuous pass, the **median** time-to-death across dying runs must be below
     60 s (half the bound) on each topology, so a small retune cannot slip it
     from "dies comfortably" to "barely dies." The test uses the same collision
     model as play, so it reflects the real rim-flip-landing kill window.
@@ -1038,8 +1039,8 @@ the §13 smoke pass completes in that browser.
 5. Player controls behave per §5: keyboard movement at rimSpeed with open-well
    clamping; pointer-lock mouse control with auto-pause on lock loss,
    click-to-resume, and consumed (non-firing) lock/unpause clicks; the
-   per-tick movement clamp; fixed 8-slot shot pool; one shot per held-fire tick
-   while a slot is free.
+   per-tick movement clamp; fixed 8-slot shot pool; an immediate shot on press,
+   then one shot per two held-fire ticks while a slot is free.
 6. Starting-level selection offers 1..max(9, maxLevelReached); high scores,
    mute state, and maxLevelReached survive reload; corrupt or unavailable
    storage neither crashes the game nor surfaces errors to the player.

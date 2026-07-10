@@ -43,6 +43,7 @@ export interface SimState {
   paletteIndex: number;
   enemies: Enemy[];
   playerShots: Shot[];
+  playerFireCooldownTicks: number; // ticks remaining before held fire may repeat
   enemyShots: Shot[];
   spikes: Spike[];
   budget: Record<EnemyKind, number>; // remaining spawn budget (§6)
@@ -78,6 +79,7 @@ export function beginLevel(s: SimState, level: number, cfg: GameConfig): void {
   s.closed = cfg.geometries[s.geometryIndex]!.closed;
   s.enemies = [];
   s.playerShots = [];
+  s.playerFireCooldownTicks = 0;
   s.enemyShots = [];
   s.spikes = [];
   s.budget = {
@@ -131,6 +133,7 @@ function enterHighScoreEntry(s: SimState): void {
 // start; death/wave transitions call this directly (Tasks 5.x).
 export function clearAllShots(s: SimState): void {
   s.playerShots = [];
+  s.playerFireCooldownTicks = 0;
   s.enemyShots = [];
 }
 
