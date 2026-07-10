@@ -68,11 +68,11 @@ describe('paramsForLevel (§8.1)', () => {
   });
 
   it('integer columns round half-up; the rest stay fractional', () => {
-    // Level 6 tanker sits exactly on x.5 between anchors 4 (2) and 8 (3).
+    // Level 6 tanker sits exactly on x.5 between anchors 4 (3) and 8 (4).
     const a = row(4);
     const b = row(8);
-    expect((a.tanker + b.tanker) / 2).toBe(2.5);
-    expect(paramsForLevel(6, anchors()).tanker).toBe(3); // half rounds UP
+    expect((a.tanker + b.tanker) / 2).toBe(3.5);
+    expect(paramsForLevel(6, anchors()).tanker).toBe(4); // half rounds UP
     for (let level = 1; level <= 112; level++) {
       const p = paramsForLevel(level, anchors());
       for (const col of INT_COLS) {

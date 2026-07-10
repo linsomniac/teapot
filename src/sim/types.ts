@@ -20,6 +20,11 @@ export const TICK_SEC = 1 / 60; // per-tick seconds; ALL sim updates advance
 // by this constant, never a passed-in dt
 // (Task 2.1's stepper re-exports TICK_MS)
 
+// The original hardware owns exactly eight physical player-shot slots.
+// Active shots keep their slot number so the first-free 7→0 allocation and
+// immediate reuse after a hit/range expiry remain observable and deterministic.
+export const PLAYER_SHOT_SLOTS = 8;
+
 // §12.3 — the ONLY way the sim advances.
 export interface InputSnapshot {
   move: number; // per-tick rim delta in lanes, pre-clamped by input layer
@@ -57,6 +62,7 @@ export interface Shot {
   lane: number;
   depth: Depth;
   prevDepth: Depth;
+  slot?: number; // player shots only; enemy shots do not share this pool
 }
 
 export interface Spike {

@@ -11,11 +11,12 @@
 // Task 12.1 audit (2026-07-06, final SimState shape): every §12.2 field is
 // serialized — phase, level, score, lives, livesGranted, rimPos, warpDepth,
 // closed, geometryIndex, superzapper, spawnTimer, pulseClock, getReadyTimer,
-// beatTimer, fireCooldown, maxLevelReached, selector(+accum/timer), hsSlot,
+// beatTimer, maxLevelReached, selector(+accum/timer), hsSlot,
 // hsInitials, all five budgets, rng.state(); per-Enemy kind/lane/depth/flip
 // (from>to@progress)/flipTimer/fireTimer/climbDir/rimTimer/rimDir/
-// jitterTimer/speedMul/descentTarget/pulseJoined; per-shot lane/depth both
-// sides; per-spike lane/topDepth; the high-score table. Shot.prevDepth is
+// jitterTimer/speedMul/descentTarget/pulseJoined; per-shot lane/depth on both
+// sides plus the physical slot for player shots; per-spike lane/topDepth; the
+// high-score table. Shot.prevDepth is
 // overwritten by advanceShots before any use each tick, so between ticks it
 // is render-only, like the other excluded prev* fields. paletteIndex is
 // hashed but derives from level (render-only per §12.2's exclusion list —
@@ -50,7 +51,6 @@ export function serializeState(s: SimState): string {
     s.pulseClock,
     s.getReadyTimer,
     s.beatTimer,
-    s.fireCooldown,
     s.maxLevelReached,
     s.selector,
     s.selectorAccum,
@@ -82,7 +82,9 @@ export function serializeState(s: SimState): string {
       e.pulseJoined === undefined ? '-' : e.pulseJoined ? 1 : 0,
     );
   }
-  for (const sh of s.playerShots) parts.push('P', sh.lane, sh.depth);
+  for (const sh of s.playerShots) {
+    parts.push('P', sh.slot ?? '-', sh.lane, sh.depth);
+  }
   for (const sh of s.enemyShots) parts.push('S', sh.lane, sh.depth);
   for (const sp of s.spikes) parts.push('K', sp.lane, sp.topDepth);
   for (const h of s.highScores) parts.push('H', h.initials, h.score, h.level);

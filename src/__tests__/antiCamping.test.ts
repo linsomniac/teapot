@@ -6,9 +6,9 @@ import { makeInput } from './fixtures/input';
 
 // Anti-camping (Task 12.5, §13/D39/D44): stationary hold-fire lane-camping
 // must NOT be a viable strategy — the flipSeekBias random fraction sends
-// enemies to the rim on other lanes, and rim chases + D40's fire-interval
-// floor make the camp lethal. Runs against the LIVE tuning: retuning
-// flipSeekBias/fireInterval must keep this green.
+// enemies to the rim on other lanes, where rim chases and contact geometry
+// make the camp lethal even against fixed-slot continuous fire. Runs against
+// the LIVE tuning: retuning flipSeekBias and rim contact must keep this green.
 //
 // Seeds are the fixed integers 1..10 — not hand-picked.
 

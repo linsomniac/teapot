@@ -53,7 +53,7 @@ function richState(): SimState {
     fuseball,
     { ...makePulsar(5, lp, rng), depth: 0.5, pulseJoined: true },
   ];
-  s.playerShots = [{ lane: 6, depth: 0.3, prevDepth: 0.28 }];
+  s.playerShots = [{ lane: 6, depth: 0.3, prevDepth: 0.28, slot: 7 }];
   s.enemyShots = [{ lane: 7, depth: 0.6, prevDepth: 0.62 }];
   s.spikes = [{ lane: 8, topDepth: 0.5 }];
   s.highScores = [{ initials: 'AAA', score: 1000, level: 3 }];
@@ -62,7 +62,6 @@ function richState(): SimState {
   s.getReadyTimer = 0.5;
   s.selectorAccum = 0.4;
   s.selectorTimer = 0.05;
-  s.fireCooldown = 0.1;
   s.warpDepth = 0.2;
   s.prevWarpDepth = 0.18;
   s.prevRimPos = 7.9;

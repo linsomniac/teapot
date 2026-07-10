@@ -7,7 +7,10 @@ import {
   enterPlaying,
 } from './state';
 import { advanceShots } from './enemies/shots';
-import { TICK_SEC } from './types';
+import { makeFlipper } from './enemies/flipper';
+import { paramsForLevel } from './difficultyCurve';
+import { makeRng } from './rng';
+import { PLAYER_SHOT_SLOTS, TICK_SEC } from './types';
 import { makeLiveConfig } from '../__tests__/fixtures/liveConfig';
 import { makeInput } from '../__tests__/fixtures/input';
 
@@ -68,6 +71,7 @@ describe('player firing (§5)', () => {
     expect(s.playerShots).toHaveLength(1);
     const shot = s.playerShots[0]!;
     expect(shot.lane).toBe(8);
+    expect(shot.slot).toBe(7); // first-free scan is physical slots 7→0
     // Spawned at depth 0 and advanced by step 2 within the same tick.
     expect(shot.prevDepth).toBe(0);
     expect(shot.depth).toBeCloseTo(cfg.tuning.shotSpeed * TICK_SEC, 12);
@@ -83,37 +87,79 @@ describe('player firing (§5)', () => {
     expect(s.playerShots[0]!.prevDepth).toBe(0.5);
   });
 
-  it('hold-fire auto-fires at the fireInterval cap', () => {
+  it('held fire creates exactly one shot per tick until all eight slots are full', () => {
     const { sim, s } = playingSim(9);
-    const ticks = 60;
-    let spawned = 0;
-    for (let i = 0; i < ticks; i++) {
+    const allocated: number[] = [];
+    for (let i = 0; i < PLAYER_SHOT_SLOTS; i++) {
       const { events } = sim.tick(makeInput({ fire: true }));
-      spawned += events.filter((e) => e.type === 'playerShot').length;
+      expect(events.filter((e) => e.type === 'playerShot')).toHaveLength(1);
+      allocated.push(s.playerShots[s.playerShots.length - 1]!.slot!);
     }
-    // Period = ticks needed for fireInterval to drain at TICK_SEC each.
-    const period = Math.ceil(cfg.tuning.fireInterval / TICK_SEC);
-    const expected = 1 + Math.floor((ticks - 1) / period);
-    expect(spawned).toBe(expected);
-    expect(s.playerShots.length).toBeLessThanOrEqual(cfg.tuning.maxPlayerShots);
-    // Sanity: the cap actually limits (more than 1, fewer than every tick).
-    expect(spawned).toBeGreaterThan(1);
-    expect(spawned).toBeLessThan(ticks / 2);
+    expect(allocated).toEqual([7, 6, 5, 4, 3, 2, 1, 0]);
+    expect(s.playerShots).toHaveLength(PLAYER_SHOT_SLOTS);
+
+    const blocked = sim.tick(makeInput({ fire: true }));
+    expect(blocked.events.filter((e) => e.type === 'playerShot')).toHaveLength(
+      0,
+    );
   });
 
-  it('never exceeds maxPlayerShots in flight', () => {
+  it('never exceeds the hard cap of exactly eight live player shots', () => {
     const { sim, s } = playingSim(9);
-    s.playerShots = Array.from(
-      { length: cfg.tuning.maxPlayerShots },
-      (_, i) => ({
-        lane: i,
-        depth: 0.2,
-        prevDepth: 0.2,
-      }),
-    );
+    s.playerShots = Array.from({ length: PLAYER_SHOT_SLOTS }, (_, i) => ({
+      lane: i,
+      depth: 0.2,
+      prevDepth: 0.2,
+      slot: i,
+    }));
     const { events } = sim.tick(makeInput({ fire: true }));
     expect(events.filter((e) => e.type === 'playerShot')).toHaveLength(0);
-    expect(s.playerShots).toHaveLength(cfg.tuning.maxPlayerShots);
+    expect(s.playerShots).toHaveLength(PLAYER_SHOT_SLOTS);
+  });
+
+  it('reuses a slot on the first fire tick after its shot expires at range', () => {
+    const { sim, s } = playingSim(9);
+    s.playerShots = Array.from({ length: PLAYER_SHOT_SLOTS }, (_, slot) => ({
+      lane: slot,
+      depth: slot === 7 ? 0.99 : 0.2,
+      prevDepth: slot === 7 ? 0.99 : 0.2,
+      slot,
+    }));
+
+    // Fire runs before movement, so the full pool blocks this tick; range
+    // expiry in the collision step then frees physical slot 7.
+    const expiryTick = sim.tick(makeInput({ fire: true }));
+    expect(expiryTick.events).not.toContainEqual({ type: 'playerShot' });
+    expect(s.playerShots.some((shot) => shot.slot === 7)).toBe(false);
+
+    const reuseTick = sim.tick(makeInput({ fire: true }));
+    expect(reuseTick.events).toContainEqual({ type: 'playerShot' });
+    expect(s.playerShots.find((shot) => shot.slot === 7)?.prevDepth).toBe(0);
+  });
+
+  it('reuses a slot on the first fire tick after impact consumes its shot', () => {
+    const { sim, s } = playingSim(9);
+    const params = paramsForLevel(s.level, cfg.difficulty);
+    const target = makeFlipper(3, params, makeRng(23));
+    target.depth = 0.5;
+    target.prevDepth = 0.5;
+    target.flipTimer = 100;
+    s.enemies = [target];
+    s.playerShots = Array.from({ length: PLAYER_SHOT_SLOTS }, (_, slot) => ({
+      lane: slot === 7 ? 3 : slot + 5,
+      depth: slot === 7 ? 0.47 : 0.2,
+      prevDepth: slot === 7 ? 0.47 : 0.2,
+      slot,
+    }));
+
+    const impactTick = sim.tick(makeInput({ fire: true }));
+    expect(impactTick.events).not.toContainEqual({ type: 'playerShot' });
+    expect(impactTick.events.some((e) => e.type === 'enemyKilled')).toBe(true);
+    expect(s.playerShots.some((shot) => shot.slot === 7)).toBe(false);
+
+    const reuseTick = sim.tick(makeInput({ fire: true }));
+    expect(reuseTick.events).toContainEqual({ type: 'playerShot' });
+    expect(s.playerShots.some((shot) => shot.slot === 7)).toBe(true);
   });
 
   it('a shot reaching depth 1 despawns', () => {
@@ -163,11 +209,15 @@ describe('shot bookkeeping (§6)', () => {
     expect(s.enemyShots).toEqual([]);
   });
 
-  it('beginLevel resets fireCooldown so a shot is available at level start', () => {
+  it('beginLevel clears all eight physical slots for the next level', () => {
     const { sim, s } = playingSim(9);
-    sim.tick(makeInput({ fire: true }));
-    expect(s.fireCooldown).toBeGreaterThan(0);
+    for (let i = 0; i < PLAYER_SHOT_SLOTS; i++) {
+      sim.tick(makeInput({ fire: true }));
+    }
+    expect(s.playerShots).toHaveLength(PLAYER_SHOT_SLOTS);
     beginLevel(s, 10, cfg);
-    expect(s.fireCooldown).toBe(0);
+    expect(s.playerShots).toHaveLength(0);
+    const { events } = sim.tick(makeInput({ fire: true }));
+    expect(events).toContainEqual({ type: 'playerShot' });
   });
 });

@@ -15,7 +15,6 @@ const cfg = makeLiveConfig();
 function warpingSim(level: number, seed = 1): { sim: Sim; s: SimState } {
   const { sim, s } = playingSim(cfg, level, seed);
   s.budget = { flipper: 0, tanker: 0, spiker: 0, fuseball: 0, pulsar: 0 };
-  s.fireCooldown = 0.9; // must be reset by enterWarp
   sim.tick(makeInput());
   expect(s.phase).toBe('WARP');
   return { sim, s };
@@ -31,9 +30,9 @@ describe('warp descent (§9)', () => {
     expect(s.prevWarpDepth).toBeCloseTo(cfg.tuning.descentSpeed * TICK_SEC, 12);
   });
 
-  it('fire cooldown is reset at WARP entry — a shot fires on the first descent tick', () => {
+  it('the cleared shot pool allows fire on the first descent tick', () => {
     const { sim, s } = warpingSim(5);
-    expect(s.fireCooldown).toBe(0);
+    expect(s.playerShots).toHaveLength(0);
     const { events } = sim.tick(makeInput({ fire: true }));
     expect(events).toContainEqual({ type: 'playerShot' });
   });

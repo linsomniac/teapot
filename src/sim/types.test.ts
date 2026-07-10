@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ENEMY_KINDS,
+  PLAYER_SHOT_SLOTS,
   TICK_MS,
   TICK_SEC,
   type Enemy,
@@ -63,7 +64,7 @@ const pulsar: Enemy = {
   pulseJoined: true,
 };
 
-const shot: Shot = { lane: 2, depth: 0.1, prevDepth: 0.125 };
+const shot: Shot = { lane: 2, depth: 0.1, prevDepth: 0.125, slot: 7 };
 const spike: Spike = { lane: 9, topDepth: 0.4 };
 
 const events: SimEvent[] = [
@@ -100,6 +101,10 @@ describe('sim core types', () => {
 
   it('TICK_SEC × 60 spans exactly one second', () => {
     expect(TICK_SEC * 60).toBe(1);
+  });
+
+  it('owns exactly eight physical player-shot slots', () => {
+    expect(PLAYER_SHOT_SLOTS).toBe(8);
   });
 
   it('has exactly the five enemy kinds, frozen', () => {

@@ -1401,8 +1401,6 @@ export const FROZEN_CONFIG: GameConfig = {
     mouseSensitivity: 50,
     perTickClamp: 0.45,
     shotSpeed: 1.5,
-    fireInterval: 0.18,
-    maxPlayerShots: 8,
     flipAnimTime: 0.25,
     flipperHalfHeight: 0.045,
     rimFlipFactor: 0.5,

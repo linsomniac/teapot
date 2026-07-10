@@ -125,12 +125,15 @@ Non-goals and `loop/spec-decisions`).
   so movement events during a pause never burst-spin the player on resume.
 - **Firing:** space / left mouse button (when pointer-locked). Shots spawn at the
   player's current depth (0 during play; the Blaster's current depth during warp)
-  on the player's lane and travel down it at `shotSpeed`. Maximum **8 player
-  shots** in flight; firing is capped at one shot per `fireInterval` (0.18 s —
-  longer than a flip's landing window *plus* the rim collision reach, so a
-  point-blank rim save needs an aimed shot rather than falling out of auto-fire;
-  see D40 and the §8.3 constraint). Holding fire auto-fires at that cap. A shot
-  that reaches the well bottom (depth 1) without hitting anything despawns.
+  on the player's lane and travel down it at `shotSpeed`. The fire input is a
+  held/level signal, sampled every simulation tick. Player fire owns exactly
+  **8 physical slots** (0–7): each tick that fire is held, scan slots 7 down to
+  0, create at most one shot in the first empty slot, then advance it during
+  that same tick. There is no cooldown, rate limiter, or ammo-regeneration
+  clock. When all slots are occupied, firing pauses until a shot frees its slot
+  by hitting a target or reaching the well bottom (depth 1); combat-state resets
+  clear the pool. This naturally produces an evenly spaced held-fire ladder and
+  faster replacement fire when nearby hits free slots quickly.
 - **Superzapper:** the player has **two uses per level**, forming a state machine
   `FULL(2) → PARTIAL(1) → EMPTY(0)` shown as HUD pips:
   - Use 1 (from FULL): destroys **all enemies currently on the well**. Tankers
@@ -426,18 +429,22 @@ level anyway).
 
 ### 8.2 Difficulty anchor table (initial tuning — values may be adjusted during playtesting, structure may not)
 
+Enemy wave budgets and concurrency are rounded to roughly 1.3× their original
+values; climb and enemy-shot speeds are 1.3×, and spawn intervals yield roughly
+1.3× the original spawn-attempt rate.
+
 | Level | Flip | Tank | Spik | Fuse | Puls | MaxOnWell | Climb (depth/s) | FlipInt (s) | FireInt (s) | MaxShots | EShot (depth/s) | SpikeH | Pulse (s) | SpawnInt (s) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | 8 | 0 | 0 | 0 | 0 | 4 | 0.10 | 2.0 | 3.0 | 2 | 0.40 | — | — | 1.2 |
-| 4 | 10 | 2 | 2 | 0 | 0 | 5 | 0.12 | 1.6 | 2.4 | 3 | 0.45 | 0.40 | — | 1.1 |
-| 8 | 12 | 3 | 3 | 0 | 0 | 6 | 0.14 | 1.3 | 2.0 | 4 | 0.50 | 0.45 | — | 1.0 |
-| 11 | 12 | 3 | 3 | 2 | 0 | 6 | 0.15 | 1.2 | 1.9 | 4 | 0.55 | 0.50 | — | 0.9 |
-| 17 | 14 | 4 | 4 | 3 | 2 | 7 | 0.17 | 1.1 | 1.7 | 5 | 0.60 | 0.50 | 3.0 | 0.8 |
-| 24 | 16 | 5 | 5 | 4 | 3 | 8 | 0.19 | 1.0 | 1.5 | 5 | 0.70 | 0.55 | 2.7 | 0.7 |
-| 32 | 18 | 6 | 5 | 4 | 4 | 9 | 0.21 | 0.9 | 1.3 | 6 | 0.80 | 0.60 | 2.4 | 0.6 |
-| 48 | 20 | 7 | 6 | 5 | 5 | 10 | 0.24 | 0.8 | 1.1 | 6 | 0.90 | 0.60 | 2.2 | 0.5 |
-| 64 | 22 | 8 | 6 | 6 | 6 | 11 | 0.26 | 0.7 | 1.0 | 7 | 1.00 | 0.65 | 2.0 | 0.45 |
-| 96 | 24 | 8 | 7 | 6 | 7 | 12 | 0.30 | 0.6 | 0.9 | 8 | 1.10 | 0.65 | 1.8 | 0.40 |
+| 1 | 10 | 0 | 0 | 0 | 0 | 5 | 0.130 | 2.0 | 3.0 | 2 | 0.520 | — | — | 0.923 |
+| 4 | 13 | 3 | 3 | 0 | 0 | 7 | 0.156 | 1.6 | 2.4 | 3 | 0.585 | 0.40 | — | 0.846 |
+| 8 | 16 | 4 | 4 | 0 | 0 | 8 | 0.182 | 1.3 | 2.0 | 4 | 0.650 | 0.45 | — | 0.769 |
+| 11 | 16 | 4 | 4 | 3 | 0 | 8 | 0.195 | 1.2 | 1.9 | 4 | 0.715 | 0.50 | — | 0.692 |
+| 17 | 18 | 5 | 5 | 4 | 3 | 9 | 0.221 | 1.1 | 1.7 | 5 | 0.780 | 0.50 | 3.0 | 0.615 |
+| 24 | 21 | 7 | 7 | 5 | 4 | 10 | 0.247 | 1.0 | 1.5 | 5 | 0.910 | 0.55 | 2.7 | 0.538 |
+| 32 | 23 | 8 | 7 | 5 | 5 | 12 | 0.273 | 0.9 | 1.3 | 6 | 1.040 | 0.60 | 2.4 | 0.462 |
+| 48 | 26 | 9 | 8 | 7 | 7 | 13 | 0.312 | 0.8 | 1.1 | 6 | 1.170 | 0.60 | 2.2 | 0.385 |
+| 64 | 29 | 10 | 8 | 8 | 8 | 14 | 0.338 | 0.7 | 1.0 | 7 | 1.300 | 0.65 | 2.0 | 0.346 |
+| 96 | 31 | 10 | 9 | 8 | 9 | 16 | 0.390 | 0.6 | 0.9 | 8 | 1.430 | 0.65 | 1.8 | 0.308 |
 
 Column notes: Flip/Tank/Spik/Fuse/Puls = per-type spawn budgets (initial values
 per level; death-returns may raise the remaining Flipper budget above the
@@ -459,12 +466,11 @@ attempts (§6; only non-Spiker enemies count toward MaxOnWell).
 | rimSpeed (keyboard) | 14 lanes/s |
 | mouseSensitivity (pointer-locked) | 50 px per lane |
 | per-tick rim-movement clamp | 0.45 lanes/tick (must stay < 0.5 so lane crossings are never skipped — §4) |
-| shotSpeed (player) | 1.5 depth/s |
-| fireInterval (player) | 0.18 s (must stay > flipAnimTime/2 + (enemyHalfExtent + shotHalfExtent)/shotSpeed + one tick ≈ 0.125 + 0.02 + 0.017 ≈ 0.162 s, so a rim-flip landing is not auto-covered by the hold-fire stream — D40) |
-| max player shots | 8 |
+| shotSpeed (player) | 1.95 depth/s |
+| player shot slots | 8 (fixed engine invariant; not configurable) |
 | flipAnimTime | 0.25 s |
 | flipperHalfHeight | 0.045 depth (bowtie half-length along the lane; the Flipper's rim arrival depth — top corners touch depth 0 when the center reaches it, §5(b)/§6.1. Kept < minimum enemy firing depth so rim residents stay ineligible to fire; matched by the render along-lane half-extent so lethal geometry and visuals agree) |
-| flipSeekBias | 0.5 (fraction of mid-well flips that seek the player; the rest step to a random adjacent lane — governs whether hold-fire camping is survivable; tune against the anti-camping test, §13) |
+| flipSeekBias | 0.3 (fraction of mid-well flips that seek the player; the rest step to a random adjacent lane — governs whether fixed-slot hold-fire camping is survivable; tune against the anti-camping test, §13) |
 | rimFlipInterval | 0.5 × FlipInt (≥ flipAnimTime by the §8.2 table constraint) |
 | climb multipliers (× Climb) | Flipper 1.0, Tanker 0.6, Spiker 0.8, Fuseball 0.5, Pulsar 0.9 |
 | fuseballRimSpeed | 2 lanes/s |
@@ -501,9 +507,9 @@ Chosen via a selector on the level-select screen (§10 UI navigation).
 
 - After wave completion the Blaster flies down the well at the descent speed
   (§8.3), passing any remaining spikes. "AVOID SPIKES" flashes at descent start
-  if spikes remain. The player fire cooldown is reset at WARP entry, so a shot
-  can be fired on the first descent tick (the descent-fairness invariant assumes
-  fire is available from descent start).
+  if spikes remain. The player-shot pool is cleared at WARP entry, so a shot can
+  be fired on the first descent tick (the descent-fairness invariant assumes fire
+  is available from descent start).
 - During descent the player can still move between lanes and fire; shots trim
   spikes per §6.3 (shots spawn at the Blaster's current depth). Colliding with a
   spike — §6.7 swept rule on the player's lane, Blaster as a point — kills the
@@ -898,8 +904,11 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     at pulse end, full-duration lane lethality incl. entering mid-pulse,
     de-electrification the instant the Pulsar dies (incl. the same-tick shot
     save), shots passing through pulses.
-  - Player firing: 8-shot cap, fireInterval cap, auto-fire, shot spawn depth
-    (0 in play, Blaster depth in warp); movement remains active during WARP.
+  - Player firing: held/level-triggered input; at most one spawn per tick;
+    fixed slot scan 7→0; immediate slot reuse after impact/range expiry; hard
+    8-shot cap with no cooldown or regeneration clock; shot spawn depth (0 in
+    play, Blaster depth in warp) and same-tick movement; movement remains active
+    during WARP.
   - **Anti-camping check:** scripted runs where the player first moves to the
     camp lane (mid-rim on the closed well; held to an end lane on the open
     well, since the level-start position is lane 8, §5) and then holds that
@@ -912,12 +921,11 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     mid-rim (level 1, geometry index 0) and an **open well with the player
     clamped at an end lane** (level 9, geometry index 8 — the single-direction
     funnel worst case), both pre-Fuseball so only flip-targeting anti-camping is
-    exercised. This gates `flipSeekBias` and `fireInterval`: to prevent a
+    exercised. This gates `flipSeekBias` and rim-contact geometry: to prevent a
     vacuous pass, the **median** time-to-death across the 10 seeds must be below
     60 s (half the bound) on each topology, so a small retune cannot slip it
     from "dies comfortably" to "barely dies." The test uses the same collision
-    model as play, so it reflects the real rim-flip-landing kill window (§8.3
-    fireInterval constraint).
+    model as play, so it reflects the real rim-flip-landing kill window.
   - Warp: the descent fairness invariant test **simulating the actual descent**
     per §9; spike death during warp decrements a life, keeps the level, does
     not replay the descent, and transitions WARP → PLAYING (lives remain) or
@@ -940,8 +948,8 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     qualification predicate incl. ties and the ≤ 10 bound.
   - Tuning-constraint guards: assert across the interpolated table that every
     level satisfies FlipInt ≥ 2 × flipAnimTime, rimFlipInterval ≥ flipAnimTime,
-    fireInterval > the §8.3 rim-flip-landing bound, and the per-tick rim clamp
-    < 0.5 lanes — so a retune that violates a stated constraint fails CI.
+    and the per-tick rim clamp < 0.5 lanes — so a retune that violates a stated
+    constraint fails CI.
 - **Test-value policy:** structural and invariant tests (interpolation incl.
   "—" cells, introduction gating, monotonicity, economy, descent fairness,
   anti-camping, tuning-constraint guards) run against the **live** data module;
@@ -1030,7 +1038,8 @@ the §13 smoke pass completes in that browser.
 5. Player controls behave per §5: keyboard movement at rimSpeed with open-well
    clamping; pointer-lock mouse control with auto-pause on lock loss,
    click-to-resume, and consumed (non-firing) lock/unpause clicks; the
-   per-tick movement clamp; 8-shot cap; hold-to-auto-fire.
+   per-tick movement clamp; fixed 8-slot shot pool; one shot per held-fire tick
+   while a slot is free.
 6. Starting-level selection offers 1..max(9, maxLevelReached); high scores,
    mute state, and maxLevelReached survive reload; corrupt or unavailable
    storage neither crashes the game nor surfaces errors to the player.

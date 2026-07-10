@@ -301,6 +301,31 @@ describe('top-edge rim arrival + lethality (Task 2)', () => {
     expect(killed.lane).toBe(8);
   });
 
+  it('a newly fired shot kills a second-half rim Flipper before the flip completes', () => {
+    const { sim, s } = playingSim(cfg, 1); // player lane 8
+    const e = flipperAt(7, hh, {
+      flip: { from: 7, to: 8, progress: 0.5 },
+    });
+    s.enemies = [e];
+
+    // This exercises the user-visible input path, not a pre-seeded live shot:
+    // step 1 spawns on lane 8, step 2 advances it, and step 3 resolves the
+    // destination-half occupancy before contact lethality can run.
+    const { events } = sim.tick(makeInput({ fire: true }));
+
+    expect(events).toContainEqual({ type: 'playerShot' });
+    expect(events).toContainEqual({
+      type: 'enemyKilled',
+      kind: 'flipper',
+      lane: 8,
+      depth: hh,
+    });
+    expect(events.some((ev) => ev.type === 'playerDied')).toBe(false);
+    expect(e.flip).not.toBeNull(); // it died before committing to lane 8
+    expect(s.enemies).toHaveLength(0);
+    expect(s.playerShots).toHaveLength(0);
+  });
+
   it('a completed RIM flip re-arms via the predicate to rimFlipInterval', () => {
     const { sim, s } = playingSim(cfg, 1); // player lane 8 — clear of lane 6
     const e = flipperAt(5, hh, { flip: { from: 5, to: 6, progress: 0.95 } });

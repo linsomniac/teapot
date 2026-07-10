@@ -2,7 +2,7 @@
 // injected GameConfig + seed (+ optional InitialSave, I14) and advances ONLY
 // via tick(inputSnapshot) — no browser APIs, no wall clock, no entropy.
 
-import { TICK_SEC } from './types';
+import { PLAYER_SHOT_SLOTS, TICK_SEC } from './types';
 import type { Enemy, InputSnapshot, Shot, SimEvent, Spike } from './types';
 import type { GameConfig } from './config';
 import { validateConfig } from './config';
@@ -70,7 +70,6 @@ function makeInitialState(
     pulseClock: 0,
     getReadyTimer: 0,
     beatTimer: 0,
-    fireCooldown: 0,
     maxLevelReached,
     selector: 1, // LEVEL_SELECT opens at level 1 (§10)
     selectorAccum: 0,
@@ -127,19 +126,16 @@ function stepApplyInput(
   const delta = clampRimDelta(input.move, cfg.tuning.perTickClamp);
   s.rimPos = normalizeRimPos(s.rimPos + delta, s.closed);
 
-  // Firing (§5): one shot per fireInterval, ≤ maxPlayerShots in flight;
-  // holding fire auto-fires at the cap. Shots spawn at the player's current
-  // depth — 0 in PLAYING, the Blaster's descent depth during WARP.
-  s.fireCooldown = Math.max(0, s.fireCooldown - TICK_SEC);
-  if (
-    input.fire &&
-    s.fireCooldown <= 0 &&
-    s.playerShots.length < cfg.tuning.maxPlayerShots
-  ) {
+  // Firing: the button is a held level signal. Each tick may fill at most one
+  // of the eight physical slots, scanning 7→0 for the first free slot. There
+  // is no cooldown or ammo-regeneration clock: a slot becomes available only
+  // when its shot hits something, reaches the far wall, or combat is reset.
+  assignMissingPlayerShotSlots(s.playerShots);
+  const freeSlot = firstFreePlayerShotSlot(s.playerShots);
+  if (input.fire && freeSlot !== null) {
     const lane = playerLane(s.rimPos, s.closed);
     const depth = s.phase === 'WARP' ? s.warpDepth : 0;
-    s.playerShots.push({ lane, depth, prevDepth: depth });
-    s.fireCooldown = cfg.tuning.fireInterval;
+    s.playerShots.push({ lane, depth, prevDepth: depth, slot: freeSlot });
     events.push({ type: 'playerShot' });
   }
 
@@ -149,6 +145,45 @@ function stepApplyInput(
   if (input.zap && s.phase === 'PLAYING' && !benchMode) {
     activateSuperzapper(s, events);
   }
+}
+
+// Debug/test states may contain hand-authored player shots from before slot
+// identity was explicit. Adopt those into the same deterministic 7→0 pool so
+// they consume capacity exactly like shots created by the simulation.
+function assignMissingPlayerShotSlots(shots: Shot[]): void {
+  const occupied = new Set<number>();
+  for (const shot of shots) {
+    if (
+      shot.slot !== undefined &&
+      Number.isInteger(shot.slot) &&
+      shot.slot >= 0 &&
+      shot.slot < PLAYER_SHOT_SLOTS &&
+      !occupied.has(shot.slot)
+    ) {
+      occupied.add(shot.slot);
+    } else {
+      shot.slot = undefined;
+    }
+  }
+  for (const shot of shots) {
+    if (shot.slot !== undefined) continue;
+    for (let slot = PLAYER_SHOT_SLOTS - 1; slot >= 0; slot--) {
+      if (!occupied.has(slot)) {
+        shot.slot = slot;
+        occupied.add(slot);
+        break;
+      }
+    }
+  }
+}
+
+function firstFreePlayerShotSlot(shots: readonly Shot[]): number | null {
+  if (shots.length >= PLAYER_SHOT_SLOTS) return null;
+  const occupied = new Set(shots.map((shot) => shot.slot));
+  for (let slot = PLAYER_SHOT_SLOTS - 1; slot >= 0; slot--) {
+    if (!occupied.has(slot)) return slot;
+  }
+  return null;
 }
 
 // Step 2 (§6): advance all entities and shots.

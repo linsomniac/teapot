@@ -39,49 +39,69 @@ function sizeAt(
   return Math.max(3, Math.sqrt(dx * dx + dy * dy) / 2);
 }
 
-// Screen-space angle of a lane's local chord (the segment across the lane at
-// this depth): project(lane+0.5) − project(lane−0.5). The bowtie's WIDE axis
-// aligns to this so it comes up "across" the lane on every geometry, never
-// screen-horizontal (Task 2 point 2).
-function chordAngle(
-  lane: number,
-  depth: number,
-  g: Geometry,
-  vp: Viewport,
-): number {
-  const a = project(lane - 0.5, depth, g, vp);
-  const b = project(lane + 0.5, depth, g, vp);
-  return Math.atan2(b.y - a.y, b.x - a.x);
+// Screen-space basis for a bowtie. Its x axis is the local lane chord at the
+// rim-facing edge of the enemy; its y axis follows the actual lane toward the
+// well bottom. These axes deliberately are not assumed perpendicular: on
+// skew/open wells the lane ray can meet the rim chord obliquely. This affine
+// basis keeps the wide edge across the lane and makes both rim-facing corners
+// land exactly on the projected depth-(center - halfHeight) line.
+interface BowtieBasis {
+  xAngle: number;
+  yAngle: number;
+  halfWidth: number;
+  halfHeight: number;
 }
 
-// Half the projected ALONG-lane extent spanning ±flipperHalfHeight in depth
-// about the entity's center (Task 2 Part B): the bowtie's rim-side corners sit
-// at depth − hh, so at rest depth hh they touch the rim (depth 0) and while
-// climbing they stay below it. The projection is affine in depth, so this is
-// symmetric about the center. Clamped to a sane minimum like sizeAt.
-function alongExtentAt(
+const bowtieBasis: BowtieBasis = {
+  xAngle: 0,
+  yAngle: Math.PI / 2,
+  halfWidth: 0,
+  halfHeight: 0,
+};
+const flipFromBasis: BowtieBasis = { ...bowtieBasis };
+const flipToBasis: BowtieBasis = { ...bowtieBasis };
+
+function basisForBowtie(
   lane: number,
   depth: number,
   hh: number,
   g: Geometry,
   vp: Viewport,
-): number {
-  const near = project(lane, Math.max(0, depth - hh), g, vp);
-  const far = project(lane, Math.min(1, depth + hh), g, vp);
-  const dx = far.x - near.x;
-  const dy = far.y - near.y;
-  return Math.max(2, Math.sqrt(dx * dx + dy * dy) / 2);
+  out: BowtieBasis = bowtieBasis,
+): BowtieBasis {
+  const rimwardDepth = depth - hh;
+  const left = project(lane - 0.5, rimwardDepth, g, vp);
+  const right = project(lane + 0.5, rimwardDepth, g, vp);
+  const rimwardCenter = project(lane, rimwardDepth, g, vp);
+  const center = project(lane, depth, g, vp);
+  const xdx = right.x - left.x;
+  const xdy = right.y - left.y;
+  const ydx = center.x - rimwardCenter.x;
+  const ydy = center.y - rimwardCenter.y;
+  out.xAngle = Math.atan2(xdy, xdx);
+  out.yAngle = Math.atan2(ydy, ydx);
+  out.halfWidth = Math.max(3, Math.hypot(xdx, xdy) / 2);
+  out.halfHeight = Math.max(2, Math.hypot(ydx, ydy));
+  return out;
 }
 
 interface Placement {
   x: number;
   y: number;
-  angle: number; // silhouette base orientation + flip-over roll
+  xAngle: number; // across-lane axis (plus flip-over roll)
+  yAngle: number; // along-lane axis; may be oblique to xAngle
   size: number; // across-lane half-width (the wide bowtie axis)
   along: number; // along-lane half-height (bowtie only; depth-coherent, Task 2)
 }
 
-const placement: Placement = { x: 0, y: 0, angle: 0, size: 0, along: 0 };
+const placement: Placement = {
+  x: 0,
+  y: 0,
+  xAngle: 0,
+  yAngle: Math.PI / 2,
+  size: 0,
+  along: 0,
+};
 
 // Where (and how oriented) to draw an enemy: mid-flip enemies rotate about
 // the shared edge between the source and destination lanes (§11.1). Flippers
@@ -126,25 +146,24 @@ function placeEnemy(
     // completion frame — matching the committed non-flip draw). Other kinds
     // keep the bare roll about a screen-upright base, as before.
     if (isFlipper) {
-      const cFrom = chordAngle(e.flip.from, depth, g, vp);
-      const cTo = chordAngle(e.flip.to, depth, g, vp);
-      let dc = cTo - cFrom;
-      while (dc > Math.PI) dc -= 2 * Math.PI;
-      while (dc < -Math.PI) dc += 2 * Math.PI;
-      placement.angle = cFrom + dc * t + t * Math.PI;
+      const from = basisForBowtie(e.flip.from, depth, hh, g, vp, flipFromBasis);
+      const to = basisForBowtie(e.flip.to, depth, hh, g, vp, flipToBasis);
+      let dx = to.xAngle - from.xAngle;
+      while (dx > Math.PI) dx -= 2 * Math.PI;
+      while (dx < -Math.PI) dx += 2 * Math.PI;
+      let dy = to.yAngle - from.yAngle;
+      while (dy > Math.PI) dy -= 2 * Math.PI;
+      while (dy < -Math.PI) dy += 2 * Math.PI;
+      placement.xAngle = from.xAngle + dx * t + t * Math.PI;
+      placement.yAngle = from.yAngle + dy * t + t * Math.PI;
+      placement.size = from.halfWidth + (to.halfWidth - from.halfWidth) * t;
+      placement.along = from.halfHeight + (to.halfHeight - from.halfHeight) * t;
     } else {
-      placement.angle = t * Math.PI;
-    }
-    // Interpolate width/height across the two lanes (position already arcs via
-    // the pivot) so nothing pops as the lane commits.
-    const sizeFrom = sizeAt(e.flip.from, depth, g, vp);
-    const sizeTo = sizeAt(e.flip.to, depth, g, vp);
-    placement.size = sizeFrom + (sizeTo - sizeFrom) * t;
-    if (isFlipper) {
-      const alongFrom = alongExtentAt(e.flip.from, depth, hh, g, vp);
-      const alongTo = alongExtentAt(e.flip.to, depth, hh, g, vp);
-      placement.along = alongFrom + (alongTo - alongFrom) * t;
-    } else {
+      placement.xAngle = t * Math.PI;
+      placement.yAngle = placement.xAngle + Math.PI / 2;
+      const sizeFrom = sizeAt(e.flip.from, depth, g, vp);
+      const sizeTo = sizeAt(e.flip.to, depth, g, vp);
+      placement.size = sizeFrom + (sizeTo - sizeFrom) * t;
       placement.along = placement.size;
     }
     return placement;
@@ -155,12 +174,16 @@ function placeEnemy(
   const p = project(lane, depth, g, vp);
   placement.x = p.x;
   placement.y = p.y;
-  placement.size = sizeAt(e.lane, depth, g, vp);
   if (isFlipper) {
-    placement.angle = chordAngle(lane, depth, g, vp); // wide axis across the lane
-    placement.along = alongExtentAt(lane, depth, hh, g, vp);
+    const basis = basisForBowtie(lane, depth, hh, g, vp);
+    placement.xAngle = basis.xAngle;
+    placement.yAngle = basis.yAngle;
+    placement.size = basis.halfWidth;
+    placement.along = basis.halfHeight;
   } else {
-    placement.angle = 0;
+    placement.xAngle = 0;
+    placement.yAngle = Math.PI / 2;
+    placement.size = sizeAt(e.lane, depth, g, vp);
     placement.along = placement.size;
   }
   return placement;
@@ -245,32 +268,39 @@ export interface EnemyDrawContext {
 interface Xform {
   x: number;
   y: number;
-  cos: number;
-  sin: number;
+  xx: number;
+  xy: number;
+  yx: number;
+  yy: number;
   size: number;
   along: number; // along-lane half-height (bowtie only)
 }
 
-const xf: Xform = { x: 0, y: 0, cos: 1, sin: 0, size: 1, along: 1 };
+const xf: Xform = {
+  x: 0,
+  y: 0,
+  xx: 1,
+  xy: 0,
+  yx: 0,
+  yy: 1,
+  size: 1,
+  along: 1,
+};
 
 function tMove(ctx: CanvasRenderingContext2D, px: number, py: number): void {
-  ctx.moveTo(
-    xf.x + px * xf.cos - py * xf.sin,
-    xf.y + px * xf.sin + py * xf.cos,
-  );
+  ctx.moveTo(xf.x + px * xf.xx + py * xf.yx, xf.y + px * xf.xy + py * xf.yy);
 }
 function tLine(ctx: CanvasRenderingContext2D, px: number, py: number): void {
-  ctx.lineTo(
-    xf.x + px * xf.cos - py * xf.sin,
-    xf.y + px * xf.sin + py * xf.cos,
-  );
+  ctx.lineTo(xf.x + px * xf.xx + py * xf.yx, xf.y + px * xf.xy + py * xf.yy);
 }
 
 function setXform(p: Placement): void {
   xf.x = p.x;
   xf.y = p.y;
-  xf.cos = Math.cos(p.angle);
-  xf.sin = Math.sin(p.angle);
+  xf.xx = Math.cos(p.xAngle);
+  xf.xy = Math.sin(p.xAngle);
+  xf.yx = Math.cos(p.yAngle);
+  xf.yy = Math.sin(p.yAngle);
   xf.size = p.size;
   xf.along = p.along;
 }

@@ -8,16 +8,7 @@ export const TUNING: Tuning = Object.freeze({
   rimSpeed: 14, // lanes/s (keyboard)
   mouseSensitivity: 50, // px per lane (pointer-locked)
   perTickClamp: 0.45, // lanes/tick; must stay < 0.5 (§4)
-  shotSpeed: 1.5, // depth/s (player)
-  fireInterval: 0.26, // s; must stay > D40 floor (~0.162 s) — validateConfig.
-  // Raised 0.18→0.2 by the Task 12.5 anti-camping tuning loop (D44), then
-  // 0.2→0.26 by Task 2: moving the Flipper rim rest depth to flipperHalfHeight
-  // (off the rim line) unclips the hold-fire shot-coverage band that depth 0
-  // used to clip, roughly doubling auto-fire's reach against a rim-chaser
-  // landing on the camped lane — so the anti-camping floor had to rise. At 0.26
-  // the §13 camp seeds die without clearing, with more margin than the
-  // pre-Task-2 baseline had (first stray clear pushed from seed ~20 to ~29).
-  maxPlayerShots: 8,
+  shotSpeed: 1.95, // depth/s (player), 30% faster than the previous 1.5
   flipAnimTime: 0.25, // s
   flipperHalfHeight: 0.045, // bowtie half-length along the lane (depth units):
   // a climbing Flipper ARRIVES at the rim (§5(b)/§6.1) when its top corners
@@ -51,10 +42,10 @@ export const TUNING: Tuning = Object.freeze({
   startingLives: 3,
   getReadyDuration: 1.5, // s
   gameOverBeat: 2.0, // s
-  flipSeekBias: 0.35, // fraction of mid-well flips that seek the player.
-  // Lowered 0.5→0.35 by the Task 12.5 anti-camping tuning loop (D39/D44):
-  // at 0.5 too many enemies funneled into the camper's own firing lane
-  // mid-well instead of reaching the rim on other lanes.
+  flipSeekBias: 0.3, // fraction of mid-well flips that seek the player.
+  // Lowered 0.5→0.35 by the original anti-camping tuning loop, then 0.35→0.3
+  // for fixed-slot continuous fire: fewer enemies funnel into the camper's
+  // firing lane mid-well, so more reach the rim on other lanes and chase.
   uiStepInterval: 0.15, // s; max one selector step per interval (§8.3)
   particlePoolCap: 256, // render-side max live particles (§12.6 bench census)
 });

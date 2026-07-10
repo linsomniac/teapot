@@ -2,7 +2,7 @@
 // The sim is ALWAYS constructed from an injected GameConfig — never by
 // importing the live data modules directly (§12.2, D41).
 
-import { TICK_SEC, type EnemyKind } from './types';
+import type { EnemyKind } from './types';
 
 export interface Vec2 {
   x: number;
@@ -45,8 +45,6 @@ export interface Tuning {
   mouseSensitivity: number;
   perTickClamp: number;
   shotSpeed: number;
-  fireInterval: number;
-  maxPlayerShots: number;
   flipAnimTime: number;
   flipperHalfHeight: number; // bowtie half-length ALONG the lane, in depth units:
   // the rim arrival depth (top corners touch depth 0 when center ≤ this — §5(b))
@@ -124,19 +122,6 @@ export function validateConfig(c: GameConfig): void {
   if (!(tuning.perTickClamp < 0.5)) {
     throw new Error(
       `config: perTickClamp must stay < 0.5 lanes/tick, got ${tuning.perTickClamp}`,
-    );
-  }
-
-  // fireInterval > flipAnimTime/2 + (enemyHalf + shotHalf)/shotSpeed + one tick,
-  // so a rim-flip landing is not auto-covered by the hold-fire stream (D40).
-  const fireFloor =
-    tuning.flipAnimTime / 2 +
-    (tuning.halfExtents.enemy + tuning.halfExtents.shot) / tuning.shotSpeed +
-    TICK_SEC;
-  if (!(tuning.fireInterval > fireFloor)) {
-    throw new Error(
-      `config: fireInterval (${tuning.fireInterval}) must exceed ` +
-        `flipAnimTime/2 + (enemyHalf+shotHalf)/shotSpeed + TICK_SEC (${fireFloor}) — D40`,
     );
   }
 

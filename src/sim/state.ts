@@ -51,7 +51,6 @@ export interface SimState {
   pulseClock: number;
   getReadyTimer: number;
   beatTimer: number; // game-over beat countdown (§8.3/§10)
-  fireCooldown: number;
   maxLevelReached: number;
   selector: number; // level-select value (the chosen level)
   selectorAccum: number; // UI movement accumulator (§10, Task 6.1)
@@ -93,7 +92,6 @@ export function beginLevel(s: SimState, level: number, cfg: GameConfig): void {
   s.prevRimPos = 8;
   s.warpDepth = 0;
   s.prevWarpDepth = 0;
-  s.fireCooldown = 0;
   s.maxLevelReached = Math.max(s.maxLevelReached, level); // §8.5
 }
 
@@ -143,15 +141,13 @@ export function enterGameOver(s: SimState, cfg: GameConfig): void {
 }
 
 // PLAYING → WARP on wave completion (§8.4/§9): shots on both sides are
-// cancelled, spikes remain, and the fire cooldown resets so a shot can be
-// fired on the first descent tick (the descent-fairness invariant assumes
-// fire is available from descent start).
+// cancelled and spikes remain. Clearing the fixed player-shot pool makes a
+// shot available on the first descent tick.
 export function enterWarp(s: SimState, events: SimEvent[]): void {
   s.phase = 'WARP';
   s.warpDepth = 0;
   s.prevWarpDepth = 0;
   clearAllShots(s);
-  s.fireCooldown = 0;
   events.push({ type: 'warpStart' });
 }
 

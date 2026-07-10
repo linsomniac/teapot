@@ -66,13 +66,6 @@ describe('validateConfig (§13 tuning-constraint guards, anchor half)', () => {
     expect(() => validateConfig(c)).toThrow(/perTickClamp/);
   });
 
-  it('rejects fireInterval at or below the D40 hold-fire floor', () => {
-    const c = makeConfig();
-    // Floor ≈ 0.125 + 0.02 + 0.0167 ≈ 0.162 s with live values.
-    c.tuning.fireInterval = 0.16;
-    expect(() => validateConfig(c)).toThrow(/fireInterval/);
-  });
-
   it('rejects flipInt < 2·flipAnimTime at any anchor', () => {
     const c = makeConfig();
     c.difficulty[c.difficulty.length - 1]!.flipInt =

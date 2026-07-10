@@ -120,9 +120,9 @@ implementer's choice or is resolved elsewhere.
   field list spelled out; benchMode census-hold test with control.
 - **12.4** — OK. Fixture-based prove-the-rules-fire procedure is explicit.
 - **12.5** — OK. Seeds pinned (1..10), camp lanes pinned per topology, medians
-  bounded; tuning knobs to iterate (flipSeekBias/fireInterval) named, with
-  their floors/ceilings guarded elsewhere (validateConfig D40 bound; descent
-  fairness 5.2).
+  bounded; tuning knobs to iterate (flipSeekBias/rim contact) named, with
+  remaining constraints guarded elsewhere (validateConfig; descent fairness
+  5.2).
 - **13.1** — OK after C1 (Chrome+Firefox), C2 (this machine as bench
   reference), C3 (automate + pending human sign-off), C8 (Playwright dev-only).
 

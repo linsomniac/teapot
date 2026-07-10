@@ -216,6 +216,7 @@ export const TICK_MS = 1000 / 60;      // fixed timestep (§12.3)
 export const TICK_SEC = 1 / 60;        // per-tick seconds; ALL sim updates advance
                                        // by this constant, never a passed-in dt
                                        // (Task 2.1's stepper re-exports TICK_MS)
+export const PLAYER_SHOT_SLOTS = 8;    // fixed physical pool; not tuning
 
 export interface InputSnapshot {   // §12.3 — the ONLY way the sim advances
   move: number;      // per-tick rim delta in lanes, pre-clamped by input layer
@@ -242,7 +243,10 @@ export interface Enemy {
   // (Spiker reversal depth is 1 − LevelParams.spikeH — a per-level value, not a
   //  per-enemy field; there is deliberately no Enemy.spikeH.)
 }
-export interface Shot { lane: number; depth: Depth; prevDepth: Depth; }
+export interface Shot {
+  lane: number; depth: Depth; prevDepth: Depth;
+  slot?: number; // player shots only; enemy shots do not share the pool
+}
 export interface Spike { lane: number; topDepth: Depth; }  // occupies [topDepth,1]
 export type SimEvent =
   | { type: 'playerShot' } | { type: 'enemyShot' }
@@ -254,8 +258,8 @@ export type SimEvent =
 ```
 - [ ] Write a test that constructs each type literal (compile-time coverage) and
   asserts a small runtime invariant per exported const/array (e.g. `TICK_MS ≈
-  16.67`, `TICK_SEC × 60 === 1`, and a frozen list of the 5 `EnemyKind` values has
-  length 5). Commit.
+  16.67`, `TICK_SEC × 60 === 1`, `PLAYER_SHOT_SLOTS === 8`, and a frozen list of
+  the 5 `EnemyKind` values has length 5). Commit.
 
 ### Task 1.2: Seedable RNG (mulberry32)
 
@@ -306,7 +310,7 @@ export interface DifficultyAnchor { level: number;
   // paramsForLevel (Task 2.3) normalizes null to the column's first defined value.
 export interface Tuning {   // every §8.3 constant, concrete
   rimSpeed: number; mouseSensitivity: number; perTickClamp: number;
-  shotSpeed: number; fireInterval: number; maxPlayerShots: number;
+  shotSpeed: number;
   flipAnimTime: number; rimFlipFactor: number;               // 0.5 (rimFlipInterval = ·flipInt)
   climbMul: Record<EnemyKind, number>;
   fuseballRimSpeed: number; fuseballRimTime: number;
@@ -333,17 +337,15 @@ export function validateConfig(c: GameConfig): void;  // throws on violation
 - [ ] **Test:** `validateConfig` accepts a well-formed config; rejects a config
   whose difficulty anchors aren't sorted by level, whose geometry count ≠ 16, or
   whose tuning violates a stated §8.3 constraint at any anchor
-  (`fireInterval > flipAnimTime/2 + (enemyHalfExtent+shotHalfExtent)/shotSpeed +
-  TICK_SEC` — the `TICK_SEC` const from Task 1.1;
-  `flipInt ≥ 2·flipAnimTime`, `perTickClamp < 0.5`,
+  (`flipInt ≥ 2·flipAnimTime`, `perTickClamp < 0.5`,
   `pulse ≥ telegraph + pulseDuration`). This is part of the §13
   "tuning-constraint guards" area (the *interpolated-table* guard is in Task 2.3).
 - [ ] Implement `validateConfig` from §8.2 column notes + §8.3 table. (The positive
   "accepts" test at this task builds a minimal hand-crafted valid config with
   placeholder geometries — real geometries are authored in Task 1.5; Task 3.1 adds
   the `validateConfig(makeLiveConfig())` guard once all four live modules exist, so
-  the level-independent constants `fireInterval`/`perTickClamp` are guarded against
-  live values, §13.) Commit.
+  the level-independent `perTickClamp` is guarded against live values, §13.)
+  Commit.
 - [ ] **Author the live data modules** here or in the task that first consumes each
   (per I4): `data/tuning.ts` (§8.3), `data/difficulty.ts` (§8.2 anchors, `—`→null),
   `data/scoring.ts` (§7). `data/geometries.ts` is authored in Task 1.5. The frozen
@@ -541,7 +543,7 @@ export interface SimState {
   superzapper: 0 | 1 | 2;               // EMPTY/PARTIAL/FULL (§5)
   spawnTimer: number; pulseClock: number; getReadyTimer: number;
   beatTimer: number;                    // game-over beat countdown (§8.3/§10)
-  fireCooldown: number; maxLevelReached: number;
+  maxLevelReached: number;
   selector: number;                     // level-select value (the chosen level)
   selectorAccum: number;                // UI movement accumulator (§10, Task 6.1)
   selectorTimer: number;                // UI step-rate limiter (§10, Task 6.1)
@@ -558,9 +560,9 @@ export interface Sim {
   hash(): number;
 }
 // createSim calls validateConfig(config) at construction (so every Phase 3+ test
-// built on makeLiveConfig implicitly guards the live tuning constants — including the
-// level-independent perTickClamp/fireInterval that Task 2.3's per-level loop can't
-// reach, §13). initialSave defaults to { maxLevelReached: 1, highScores: [] }.
+// built on makeLiveConfig implicitly guards the live tuning constants — including
+// the level-independent perTickClamp that Task 2.3's per-level loop can't reach,
+// §13). initialSave defaults to { maxLevelReached: 1, highScores: [] }.
 export function createSim(config: GameConfig, seed: number, initialSave?: InitialSave): Sim;
 // pure transition helper, unit-tested directly (§10):
 export function transition(s: SimState, input: InputSnapshot, cfg: GameConfig,
@@ -614,8 +616,8 @@ export const HS_CHARSET = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';  // space fir
   bundling the live `GEOMETRIES`/`DIFFICULTY`/`TUNING`/`SCORING` (all authored by end
   of Phase 1). Every Phase 3+ test builds its config from it (Conventions).
 - [ ] **Test (live tuning guard, §13):** `validateConfig(makeLiveConfig())` does not
-  throw — this exercises the level-independent constants (`fireInterval`,
-  `perTickClamp`) that the per-level guard (Task 2.3) cannot reach.
+  throw — this exercises the level-independent `perTickClamp` that the per-level
+  guard (Task 2.3) cannot reach.
 - [ ] **Test (§10 qualification, §13 persistence area):** `qualifies`/`insertScore`
   — <10 entries always qualify; ≥ 10th qualifies; a new entry ranks **above** an
   existing equal score; the table truncates to 10.
@@ -642,9 +644,10 @@ export function advanceShots(shots: Shot[], speed: number, dir: 1 | -1): void; /
 ```
 - [ ] **Test (§13 player-firing area):** movement applies `input.move` to `rimPos`
   (keyboard delta), clamps on open wells; fire spawns a shot at `playerLane`,
-  depth = 0 in PLAY / warpDepth in WARP; ≤ 8 shots in flight; `fireCooldown`
-  enforces one shot per `fireInterval`; hold-fire auto-fires at the cap; a shot
-  reaching depth 1 despawns; shots cleared on every state transition (§6).
+  depth = 0 in PLAY / warpDepth in WARP; held fire spawns at most one shot per
+  tick by scanning a fixed eight-slot pool 7→0; full pools pause until impact or
+  range expiry frees a slot, with no cooldown/regeneration clock; a shot reaching
+  depth 1 despawns; shots are cleared on every state transition (§6).
   Interpolation snapshot: **at the start of each tick (before applying movement) set
   `prevRimPos = rimPos` and `prevWarpDepth = warpDepth`**, then apply this tick's
   movement — so prev is last tick's end and curr is this tick's end (entities do the
@@ -874,7 +877,7 @@ the next level.)
 
 **Files:** `src/sim/warp.ts`, tests + `src/__tests__/descentFairness.test.ts`.
 - [ ] **Test (§13 warp area):** Blaster descends at descent speed; can move + fire;
-  shots trim spikes; fire cooldown reset at WARP entry; spike collision (point
+  shots trim spikes; shot pool cleared at WARP entry; spike collision (point
   Blaster, §6.7) kills → life lost, level still complete, descent not replayed,
   WARP→PLAYING (lives remain) or WARP→GAME_OVER (last life); level banner is
   render-only. **maxLevelReached (§8.5):** it updates on the WARP→PLAYING entry for
@@ -1163,7 +1166,7 @@ The rules themselves were activated in Task 0.1 and have guarded sim code all al
   documented in the test — not hand-picked); player scripted to the camp lane
   (mid-rim closed level 1; end-lane open level 9) then stationary+hold-fire; each
   run fails to clear AND dies within 120 s; median time-to-death < 60 s per topology.
-  Tune `flipSeekBias`/`fireInterval` in `data/tuning.ts` until green.
+  Tune `flipSeekBias` and rim-contact geometry until green.
 - [ ] **Economy (§7/D30):** compute max attainable tail-wave score (full budgets,
   released Flippers, all Fuseballs at 750, capped clear bonus) < bonus-life interval.
   Commit.
