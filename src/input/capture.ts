@@ -19,7 +19,12 @@ const MENU_PHASES: readonly Phase[] = [
   'LEVEL_SELECT',
   'HIGH_SCORE_ENTRY',
 ];
-const PLAY_PHASES: readonly Phase[] = ['PLAYING', 'GET_READY', 'WARP'];
+const PLAY_PHASES: readonly Phase[] = [
+  'PLAYING',
+  'EXPLODING',
+  'GET_READY',
+  'WARP',
+];
 
 export interface CaptureHooks {
   phase(): Phase;
@@ -38,7 +43,7 @@ export interface Capture {
   requestLock(): void;
   hasLock(): boolean;
   // Called by the app whenever the sim phase changes: exits any held lock
-  // when the sim leaves PLAYING/GET_READY/WARP (§5).
+  // when the sim leaves PLAYING/EXPLODING/GET_READY/WARP (§5).
   notifyPhase(phase: Phase): void;
   detach(): void;
 }

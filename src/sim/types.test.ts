@@ -87,6 +87,7 @@ const phases: Phase[] = [
   'TITLE',
   'LEVEL_SELECT',
   'PLAYING',
+  'EXPLODING',
   'GET_READY',
   'WARP',
   'GAME_OVER',
@@ -129,6 +130,6 @@ describe('sim core types', () => {
     expect(shot.prevDepth).toBeGreaterThan(shot.depth);
     expect(spike.topDepth).toBe(0.4);
     expect(events).toHaveLength(13);
-    expect(phases).toHaveLength(7);
+    expect(phases).toHaveLength(8);
   });
 });

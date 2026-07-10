@@ -50,6 +50,8 @@ export interface SimState {
   superzapper: 0 | 1 | 2; // EMPTY/PARTIAL/FULL (§5)
   spawnTimer: number;
   pulseClock: number;
+  deathTimer: number;
+  deathFromWarp: boolean;
   getReadyTimer: number;
   beatTimer: number; // game-over beat countdown (§8.3/§10)
   maxLevelReached: number;
@@ -94,6 +96,8 @@ export function beginLevel(s: SimState, level: number, cfg: GameConfig): void {
   s.prevRimPos = 8;
   s.warpDepth = 0;
   s.prevWarpDepth = 0;
+  s.deathTimer = 0;
+  s.deathFromWarp = false;
   s.maxLevelReached = Math.max(s.maxLevelReached, level); // §8.5
 }
 
@@ -105,6 +109,8 @@ export function enterPlaying(s: SimState, cfg: GameConfig): void {
   s.phase = 'PLAYING';
   s.spawnTimer = params.spawnInt;
   s.pulseClock = 0;
+  s.deathTimer = 0;
+  s.deathFromWarp = false;
 }
 
 function enterLevelSelect(s: SimState): void {
@@ -140,6 +146,8 @@ export function clearAllShots(s: SimState): void {
 export function enterGameOver(s: SimState, cfg: GameConfig): void {
   s.phase = 'GAME_OVER';
   s.beatTimer = cfg.tuning.gameOverBeat;
+  s.deathTimer = 0;
+  s.deathFromWarp = false;
   clearAllShots(s);
 }
 
@@ -159,7 +167,12 @@ export function enterWarp(s: SimState, events: SimEvent[]): void {
 // tick can never outrun the player's quit (codex P2) — the run ends at the
 // moment of quitting, with no life lost.
 export function applyQuit(s: SimState, cfg: GameConfig): boolean {
-  if (s.phase === 'PLAYING' || s.phase === 'GET_READY' || s.phase === 'WARP') {
+  if (
+    s.phase === 'PLAYING' ||
+    s.phase === 'EXPLODING' ||
+    s.phase === 'GET_READY' ||
+    s.phase === 'WARP'
+  ) {
     enterGameOver(s, cfg);
     return true;
   }
@@ -176,16 +189,13 @@ export function resolveDeath(
   if (s.phase === 'WARP') {
     // §9: the life is lost at the collision, but the level still counts as
     // complete (its bonus was already awarded) and the descent is NOT
-    // replayed (D16): lives remaining → the next level begins immediately
-    // (WARP→PLAYING, which records maxLevelReached via beginLevel); last
-    // life → WARP→GAME_OVER (maxLevelReached does NOT advance).
+    // replayed (D16). EXPLODING delays the next-level/game-over transition;
+    // maxLevelReached changes only if beginLevel runs after the FX hold.
     s.lives -= 1;
-    if (s.lives > 0) {
-      beginLevel(s, s.level + 1, cfg);
-      enterPlaying(s, cfg);
-    } else {
-      enterGameOver(s, cfg);
-    }
+    clearAllShots(s);
+    s.phase = 'EXPLODING';
+    s.deathTimer = cfg.tuning.playerExplosionDuration;
+    s.deathFromWarp = true;
     return;
   }
   if (s.phase === 'PLAYING') {
@@ -201,12 +211,9 @@ export function resolveDeath(
     }
     s.enemies = [];
     clearAllShots(s);
-    if (s.lives > 0) {
-      s.phase = 'GET_READY';
-      s.getReadyTimer = cfg.tuning.getReadyDuration;
-    } else {
-      enterGameOver(s, cfg);
-    }
+    s.phase = 'EXPLODING';
+    s.deathTimer = cfg.tuning.playerExplosionDuration;
+    s.deathFromWarp = false;
   }
   void events;
 }
@@ -285,6 +292,22 @@ export function transition(
     case 'PLAYING': {
       // Death is handled by resolveDeath, quit by applyQuit — both run in
       // tick() around the combat pipeline.
+      break;
+    }
+    case 'EXPLODING': {
+      if (s.deathTimer <= 0) {
+        if (s.lives <= 0) {
+          enterGameOver(s, cfg);
+        } else if (s.deathFromWarp) {
+          beginLevel(s, s.level + 1, cfg);
+          enterPlaying(s, cfg);
+        } else {
+          s.phase = 'GET_READY';
+          s.deathTimer = 0;
+          s.deathFromWarp = false;
+          s.getReadyTimer = cfg.tuning.getReadyDuration;
+        }
+      }
       break;
     }
     case 'GET_READY': {

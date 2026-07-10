@@ -73,6 +73,8 @@ function makeInitialState(
     superzapper: 2,
     spawnTimer: 0,
     pulseClock: 0,
+    deathTimer: 0,
+    deathFromWarp: false,
     getReadyTimer: 0,
     beatTimer: 0,
     maxLevelReached,
@@ -628,6 +630,10 @@ function makeSim(s: SimState, cfg: GameConfig, benchMode: boolean): Sim {
       }
       if (s.phase === 'PLAYING' || s.phase === 'WARP') {
         tickCombat(s, input, cfg, ctx, events, benchMode);
+      } else if (s.phase === 'EXPLODING') {
+        // Freeze the empty well while the render/audio death effects finish.
+        // Input is ignored, but sim time remains deterministic and pauseable.
+        s.deathTimer -= TICK_SEC;
       } else if (s.phase === 'GET_READY') {
         // §10: the well is empty; movement is applied (the player may
         // reposition), fire and zap are ignored; the timer advances only

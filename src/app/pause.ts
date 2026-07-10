@@ -1,6 +1,6 @@
 // App-layer pause overlay (§10, D19): pause is NOT a sim state — while
 // paused the app stops calling tick() entirely and replays stay
-// pause-agnostic. Exists only while the sim is in PLAYING/GET_READY/WARP.
+// pause-agnostic. Exists only in PLAYING/EXPLODING/GET_READY/WARP.
 
 import type { CanvasView } from '../render/canvas';
 import { pathText } from '../render/font';

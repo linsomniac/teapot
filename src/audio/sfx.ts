@@ -80,8 +80,17 @@ export function createSfx(audio: AudioSystem): Sfx {
         tone(ac, out, { wave: 'sawtooth', f0: 240, f1: 60, t: 0.16, g: 0.16 });
         break;
       case 'playerDied':
-        noise(ac, out, 0.5, 0.3);
-        tone(ac, out, { wave: 'sawtooth', f0: 130, f1: 28, t: 0.55, g: 0.28 });
+        noise(ac, out, 0.72, 0.34);
+        noise(ac, out, 0.22, 0.2, 0.12);
+        tone(ac, out, { wave: 'sawtooth', f0: 180, f1: 24, t: 0.75, g: 0.3 });
+        tone(ac, out, {
+          wave: 'triangle',
+          f0: 520,
+          f1: 55,
+          t: 0.42,
+          g: 0.16,
+          delay: 0.06,
+        });
         break;
       case 'flip':
         tone(ac, out, { wave: 'triangle', f0: 480, f1: 720, t: 0.06, g: 0.09 });

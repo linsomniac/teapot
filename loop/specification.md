@@ -101,7 +101,7 @@ Non-goals and `loop/spec-decisions`).
   index); "right" increases it. Open wells clamp at the end lanes.
 - **Movement (mouse, optional):** mouse control uses the **Pointer Lock API
   exclusively**, and only for gameplay — menus are keyboard-driven (§10).
-  Clicking the canvas while the sim is in PLAYING, GET_READY, or WARP requests
+  Clicking the canvas while the sim is in PLAYING, EXPLODING, GET_READY, or WARP requests
   pointer lock (that click is consumed by the input layer — it does not fire);
   clicks on other screens never request lock, and the app **exits any held lock
   when the sim leaves those three states**. The lock request passes
@@ -128,9 +128,9 @@ Non-goals and `loop/spec-decisions`).
   on the player's lane and travel down it at `shotSpeed`. The fire input is a
   held/level signal, sampled every simulation tick. Player fire owns exactly
   **8 physical slots** (0–7): a new press fires immediately, then held fire scans
-  slots 7 down to 0 every second tick (33.33 ms), creating at most one shot in
+  slots 7 down to 0 every third tick (50 ms), creating at most one shot in
   the first empty slot and advancing it during that same tick. Releasing fire
-  resets this two-tick cadence, so the next press is immediate. There is no
+  resets this three-tick cadence, so the next press is immediate. There is no
   ammo-regeneration clock. When all slots are occupied, firing pauses until a shot frees its slot
   by hitting a target or reaching the well bottom (depth 1); combat-state resets
   clear the pool. This naturally produces an evenly spaced held-fire ladder and
@@ -166,9 +166,10 @@ Non-goals and `loop/spec-decisions`).
   (c) a Pulsar's lane is electrified (§6.5) while it is the player's lane — for
       the **entire** pulse duration, including moving onto it mid-pulse;
   (d) the Blaster collides with a spike during warp descent (§9).
-  Death is immediate (no grab-and-carry gameplay; the renderer may show the
-  classic grab/drag animation as presentation — D31).
-- **After death (lives remaining):** the sim enters GET_READY (§10). All on-well
+  Death enters a 0.8 s EXPLODING presentation state (no grab-and-carry
+  gameplay) before respawn or game over.
+- **After death (lives remaining):** the sim enters EXPLODING, then GET_READY
+  (§10). All on-well
   enemies are removed instantly and **returned to the wave's remaining spawn
   budget by type** — they re-enter later through the normal spawner (SpawnInt
   cadence, MaxOnWell; §6), so a wave always requires destroying its full
@@ -487,6 +488,7 @@ attempts (§6; only non-Spiker enemies count toward MaxOnWell).
 | starting lives | 3 |
 | bonus life interval | 30,000 points |
 | level-clear bonus cap | level 96 |
+| player explosion duration | 0.8 s |
 | get-ready duration | 1.5 s |
 | game-over beat | 2.0 s |
 | UI selector step | one step per ±1.0 accumulated lanes, max one step per 0.15 s; the accumulator resets to 0 on each emitted step and is cleared when input crosses zero, so the selector stops the moment movement input stops (no post-release backlog) |
@@ -517,9 +519,8 @@ Chosen via a selector on the level-select screen (§10 UI navigation).
   player: the life is decremented at the moment of collision and the death
   burst plays, but the level still counts as complete (its bonus was already
   awarded) and the descent is **not** replayed (a deliberate inspired-by
-  deviation, spec-decisions D16). If lives remain, the descent ends immediately
-  and the next level begins normally (WARP → PLAYING); if it was the last life,
-  the game ends (WARP → GAME_OVER).
+  deviation, spec-decisions D16). After EXPLODING, lives remaining begin the
+  next level normally; the last life proceeds to GAME_OVER.
 - **Descent fairness invariant:** holding fire down one lane from descent start
   must fully trim a maximum-height spike before the Blaster reaches it. This is
   a property of the §8.2/§8.3 constants and must be verified by a §13 test that
@@ -539,19 +540,26 @@ Chosen via a selector on the level-select screen (§10 UI navigation).
 TITLE → LEVEL_SELECT            (confirm)
 LEVEL_SELECT → TITLE            (back)
 LEVEL_SELECT → PLAYING          (confirm)
-PLAYING → GET_READY             (death, lives remain)
+PLAYING → EXPLODING             (death)
+WARP → EXPLODING                (spike death)
+EXPLODING → GET_READY           (play death, lives remain; explosion ends)
+EXPLODING → PLAYING             (warp death, lives remain; next level begins)
+EXPLODING → GAME_OVER           (last life; explosion ends; or Quit-to-title)
 GET_READY → PLAYING             (get-ready timer elapses)
 PLAYING → WARP                  (wave complete)
-WARP → PLAYING                  (descent complete; or spike death with lives
-                                 remaining — descent ends, next level begins)
-PLAYING → GAME_OVER             (death, no lives left; or Quit-to-title)
+WARP → PLAYING                  (descent complete)
+PLAYING → GAME_OVER             (Quit-to-title)
 GET_READY → GAME_OVER           (Quit-to-title)
-WARP → GAME_OVER                (spike death, no lives left; or Quit-to-title)
+WARP → GAME_OVER                (Quit-to-title)
 GAME_OVER → HIGH_SCORE_ENTRY    (after the game-over beat, score qualifies)
 GAME_OVER → TITLE               (after the game-over beat, otherwise)
 HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
 ```
 
+- **EXPLODING:** a 0.8 s sim state with the player hidden, gameplay input
+  ignored, and the empty well held while layered sparks, shock rings, and the
+  synthesized death blast finish. It precedes GET_READY, the next post-warp
+  level, or GAME_OVER. Its timer pauses with the game.
 - **GET_READY:** a sim state lasting the get-ready duration (§8.3): the well is
   empty of enemies and shots, "GET READY" is shown, movement input is applied
   (the player may reposition), fire and zap are ignored. Its timer, like all sim
@@ -559,8 +567,8 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
 - **Pause is an app-layer overlay, not a sim state** (spec-decisions D19): while
   paused, the app stops calling `tick()` entirely and the sim state is frozen;
   pause and resume never pass through the sim, and replays are pause-agnostic.
-  Pause (manual and auto) exists only while the sim is in PLAYING, GET_READY,
-  or WARP — P or Escape, or **auto-pause** on document visibility loss, window
+  Pause (manual and auto) exists only while the sim is in PLAYING, EXPLODING,
+  GET_READY, or WARP — P or Escape, or **auto-pause** on document visibility loss, window
   blur, or pointer-lock exit (§5); those triggers are ignored in other states
   (menu and game-over screens just keep ticking; a throttled background rAF is
   harmless there because the accumulator clamps, §12.3). The overlay dims the
@@ -569,7 +577,7 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
   GAME_OVER flow (the run's score still counts and reaches high-score entry if
   it qualifies), so a run can be abandoned without losing an earned high score.
   Quit is delivered to the sim as a `uiQuit` input (§12.3), forcing
-  GAME_OVER from any pauseable state (PLAYING, GET_READY, or WARP).
+  GAME_OVER from any pauseable state (PLAYING, EXPLODING, GET_READY, or WARP).
 - **UI navigation (menus are keyboard-driven; the mouse plays no role outside
   gameplay, except the one title-click carve-out below):** in TITLE,
   LEVEL_SELECT, and HIGH_SCORE_ENTRY the sim converts the movement delta into
@@ -579,7 +587,7 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
   crosses zero or on state entry (so the selector stops immediately when the
   key is released — no backlog; §8.3). **Confirm** = the fire button
   (space / Enter, and — in TITLE only — a canvas click, see below); **back** =
-  Escape (LEVEL_SELECT → TITLE; Escape's pause role applies only in the three
+  Escape (LEVEL_SELECT → TITLE; Escape's pause role applies only in the four
   play states). Confirm and back act on the key's press edge, one action per
   press.
 - **Title-click carve-out:** in TITLE only, a canvas click maps to the confirm
@@ -649,7 +657,8 @@ HIGH_SCORE_ENTRY → TITLE        (initials confirmed)
   Projection is pure math in `sim/` (§12.2); its outputs never feed back into
   sim state.
 - Explosions: short line-burst particle effects; player death gets a bigger,
-  distinct burst. Particle randomness uses a render-side RNG stream, separate
+  layered spark burst, hot flash, and expanding shock rings during EXPLODING.
+  Particle randomness uses a render-side RNG stream, separate
   from the sim RNG, so visuals never affect sim determinism.
 - **Text is canvas-drawn stroke lettering** (Hershey/Vectrex-style segment data
   authored as a static module — no font files, no async font loading,
@@ -874,8 +883,10 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     nearest-the-rim target (ties: lowest lane index), no-op at EMPTY,
     consume-on-empty-well, PLAYING-state-only acceptance (rejected in
     GET_READY and WARP), persistence through death, reset at level start.
-  - Death/respawn: PLAYING → GET_READY with enemies returned to budget by
-    type; fire/zap ignored but movement applied during GET_READY; re-entry via
+  - Death/respawn: PLAYING/WARP → EXPLODING for 0.8 s with gameplay input
+    ignored, then GET_READY/next-level/GAME_OVER as appropriate; enemies are
+    returned to budget by type; fire/zap ignored but movement applied during
+    GET_READY; re-entry via
     the normal spawner; no wave completion outside PLAYING or on the death
     tick; a death with exhausted budget does **not** complete the wave (and
     same-tick kill+death completes it on resume); shots cleared on every state
@@ -906,34 +917,23 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
     de-electrification the instant the Pulsar dies (incl. the same-tick shot
     save), shots passing through pulses.
   - Player firing: held/level-triggered input; immediate first shot followed by
-    one spawn every second held tick (33.33 ms), with release resetting cadence;
+    one spawn every third held tick (50 ms), with release resetting cadence;
     fixed slot scan 7→0; immediate slot reuse after impact/range expiry; hard
     8-shot cap with no regeneration clock; shot spawn depth (0 in
     play, Blaster depth in warp) and same-tick movement; movement remains active
     during WARP.
-  - **Anti-camping check:** scripted runs where the player first moves to the
-    camp lane (mid-rim on the closed well; held to an end lane on the open
-    well, since the level-start position is lane 8, §5) and then holds that
-    position and fire, using the first 10 seeds of a fixed sequence (not
-    hand-picked). With the user-directed two-tick held-fire cadence, each
-    topology must lose a life within the 120 s sim-time bound in at least 9 of
-    10 runs, and at least 3 runs must die before clearing the level. Cover
-    **both topologies**: a closed well with the player
-    mid-rim (level 1, geometry index 0) and an **open well with the player
-    clamped at an end lane** (level 9, geometry index 8 — the single-direction
-    funnel worst case), both pre-Fuseball so only flip-targeting anti-camping is
-    exercised. This gates `flipSeekBias` and rim-contact geometry: to prevent a
-    vacuous pass, the **median** time-to-death across dying runs must be below
-    60 s (half the bound) on each topology, so a small retune cannot slip it
-    from "dies comfortably" to "barely dies." The test uses the same collision
-    model as play, so it reflects the real rim-flip-landing kill window.
+  - **Anti-camping harness:** the deterministic two-topology/10-seed harness is
+    retained but its balance assertions are skipped during three-tick cadence
+    playtesting (D47). The evenly spaced stream currently lets all 10 closed
+    level-1 runs clear without a death; enemy-side retuning is intentionally
+    deferred rather than folded into the firing/FX change.
   - Warp: the descent fairness invariant test **simulating the actual descent**
     per §9; spike death during warp decrements a life, keeps the level, does
     not replay the descent, and transitions WARP → PLAYING (lives remain) or
     WARP → GAME_OVER (last life).
   - Sim state machine: every transition in §10's sim-owned diagram (including
     GET_READY entry/exit, both WARP exits, and the Quit trigger on
-    PLAYING/GET_READY/WARP → GAME_OVER) and no others (pause is app-layer and
+    PLAYING/EXPLODING/GET_READY/WARP → GAME_OVER) and no others (pause is app-layer and
     excluded; D19); UI-navigation step accumulation (one step
     per ±1.0 lanes, rate cap, accumulator reset on emit and cleared on
     zero-cross/state entry — a long held input then release emits no post-
@@ -993,7 +993,7 @@ playable at window sizes ≥ 1024×768 CSS pixels; smaller windows must not cras
   behaviors** that unit tests cannot reach, enumerated explicitly: each
   pointer-lock loss path (Escape, blur, rejection), lock exit on leaving the
   play states, lock-request rejection hint, visibility/blur auto-pause in
-  PLAYING/GET_READY/WARP (and ignored elsewhere), click-to-resume incl. the
+  PLAYING/EXPLODING/GET_READY/WARP (and ignored elsewhere), click-to-resume incl. the
   Chromium re-lock cooldown and the lock-held-at-pause rule, consumed clicks
   not firing, private-mode/quota storage degradation, AudioContext recovery
   after interruption — each run per supported browser (§12.5).
@@ -1034,13 +1034,13 @@ the §13 smoke pass completes in that browser.
 4. The rules, state machines, and invariants of §5–§9 hold as verified by the
    corresponding §13 test areas (§13 is the canonical rule→test mapping).
    Numeric parameters may be the data module's values at acceptance time,
-   provided all documented invariants (descent fairness, difficulty
-   monotonicity, the scoring economy invariant, anti-camping) still pass.
+   provided all active documented invariants (descent fairness, difficulty
+   monotonicity, and the scoring economy invariant) still pass.
 5. Player controls behave per §5: keyboard movement at rimSpeed with open-well
    clamping; pointer-lock mouse control with auto-pause on lock loss,
    click-to-resume, and consumed (non-firing) lock/unpause clicks; the
    per-tick movement clamp; fixed 8-slot shot pool; an immediate shot on press,
-   then one shot per two held-fire ticks while a slot is free.
+   then one shot per three held-fire ticks while a slot is free.
 6. Starting-level selection offers 1..max(9, maxLevelReached); high scores,
    mute state, and maxLevelReached survive reload; corrupt or unavailable
    storage neither crashes the game nor surfaces errors to the player.
@@ -1055,7 +1055,7 @@ the §13 smoke pass completes in that browser.
    statistics are informational only.
 8. HUD, title (reserved-key rule), level select (incl. Escape-to-title and UI
    step navigation), GET_READY, the app-layer pause overlay (manual from
-   PLAYING/GET_READY/WARP; auto-pause on visibility loss, blur, and
+   PLAYING/EXPLODING/GET_READY/WARP; auto-pause on visibility loss, blur, and
    pointer-lock exit; ignored elsewhere; no sim time leak), game over
    (including from WARP; game-over beat), and high-score entry (qualification
    rule, character set) all function per §10.

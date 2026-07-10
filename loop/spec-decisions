@@ -386,3 +386,17 @@ D44's absolute “all seeds die before any clear” criterion no longer models t
 requested firing behavior. The live-tuning anti-camping gate remains on both
 topologies, but now requires a death within 120 seconds in at least 9/10 fixed
 seeds, at least 3/10 deaths before a clear, and median death below 60 seconds.
+
+## D47. Three-tick fire playtest and an explicit player-explosion state
+
+Held fire is slowed again to one shot every third 60 Hz tick (50 ms), while a
+fresh press remains immediate and release resets the cadence. This evenly
+spaced stream makes the D46 anti-camping thresholds invalid: all 10 fixed
+closed-well runs clear without a death. The deterministic harness remains in
+the tree but is skipped while this cadence is playtested; restoring the balance
+gate requires a separate enemy-side tuning decision.
+
+Player death now enters EXPLODING for 0.8 seconds before GET_READY, post-warp
+level advance, or GAME_OVER. Gameplay input is ignored and the player is hidden
+while layered line particles, expanding shock rings, and a longer synthesized
+blast play. The state is deterministic, hashed, and pauseable.

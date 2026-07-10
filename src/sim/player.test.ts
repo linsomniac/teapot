@@ -91,7 +91,7 @@ describe('player firing (§5)', () => {
     expect(s.playerShots[0]!.prevDepth).toBe(0.5);
   });
 
-  it('held fire creates one shot every two ticks until all eight slots are full', () => {
+  it('held fire creates one shot every three ticks until all eight slots are full', () => {
     const { sim, s } = playingSim(9);
     const allocated: number[] = [];
     for (let i = 0; i < PLAYER_SHOT_SLOTS; i++) {

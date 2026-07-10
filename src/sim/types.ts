@@ -10,6 +10,7 @@ export type Phase =
   | 'TITLE'
   | 'LEVEL_SELECT'
   | 'PLAYING'
+  | 'EXPLODING'
   | 'GET_READY'
   | 'WARP'
   | 'GAME_OVER'
@@ -24,9 +25,9 @@ export const TICK_SEC = 1 / 60; // per-tick seconds; ALL sim updates advance
 // Active shots keep their slot number so the first-free 7→0 allocation and
 // immediate reuse after a hit/range expiry remain observable and deterministic.
 export const PLAYER_SHOT_SLOTS = 8;
-// Held fire emits on every second simulation tick: immediate on press, then
-// one intervening tick between shots (33.33 ms at the fixed 60 Hz rate).
-export const PLAYER_FIRE_INTERVAL_TICKS = 2;
+// Held fire emits on every third simulation tick: immediate on press, then
+// two intervening ticks between shots (50 ms at the fixed 60 Hz rate).
+export const PLAYER_FIRE_INTERVAL_TICKS = 3;
 
 // §12.3 — the ONLY way the sim advances.
 export interface InputSnapshot {

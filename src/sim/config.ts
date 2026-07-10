@@ -67,6 +67,7 @@ export interface Tuning {
     blaster: number;
   };
   startingLives: number;
+  playerExplosionDuration: number;
   getReadyDuration: number;
   gameOverBeat: number;
   flipSeekBias: number;
@@ -122,6 +123,12 @@ export function validateConfig(c: GameConfig): void {
   if (!(tuning.perTickClamp < 0.5)) {
     throw new Error(
       `config: perTickClamp must stay < 0.5 lanes/tick, got ${tuning.perTickClamp}`,
+    );
+  }
+
+  if (!(tuning.playerExplosionDuration > 0)) {
+    throw new Error(
+      `config: playerExplosionDuration must be > 0, got ${tuning.playerExplosionDuration}`,
     );
   }
 

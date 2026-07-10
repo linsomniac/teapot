@@ -94,7 +94,9 @@ describe('warp spike death (§9)', () => {
     }
     expect(died).toBe(true);
     expect(s.lives).toBe(livesBefore - 1);
-    expect(s.phase).toBe('PLAYING'); // descent ended immediately, no replay
+    expect(s.phase).toBe('EXPLODING');
+    while (s.phase === 'EXPLODING' && guard++ < 500) sim.tick(makeInput());
+    expect(s.phase).toBe('PLAYING'); // explosion ends, descent is not replayed
     expect(s.level).toBe(6); // the level still counted as complete
   });
 
@@ -105,6 +107,8 @@ describe('warp spike death (§9)', () => {
     s.spikes = [{ lane: 8, topDepth: 0.3 }];
     let guard = 0;
     while (s.phase === 'WARP' && guard++ < 400) sim.tick(makeInput());
+    expect(s.phase).toBe('EXPLODING');
+    while (s.phase === 'EXPLODING' && guard++ < 500) sim.tick(makeInput());
     expect(s.phase).toBe('GAME_OVER');
     expect(s.lives).toBe(0);
     expect(s.level).toBe(9); // never began the next level

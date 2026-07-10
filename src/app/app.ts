@@ -25,7 +25,12 @@ import { createPause, drawPauseOverlay } from './pause';
 import { startLoop } from './loop';
 import { createFrameStats, drawFrameTimeOverlay } from './bench';
 
-const PLAY_PHASES: readonly Phase[] = ['PLAYING', 'GET_READY', 'WARP'];
+const PLAY_PHASES: readonly Phase[] = [
+  'PLAYING',
+  'EXPLODING',
+  'GET_READY',
+  'WARP',
+];
 
 export function buildLiveConfig(): GameConfig {
   return {

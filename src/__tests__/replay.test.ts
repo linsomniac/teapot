@@ -27,15 +27,14 @@ const MAX_TICKS = 200_000;
 // AIDEV-NOTE: golden values — re-record ONLY on an intentional, reviewed
 // rule change or engine upgrade (Node pinned via .nvmrc/engines, I2/C5/C7).
 const GOLDEN = {
-  hash: 1349261043,
-  score: 30140,
+  hash: 1074883397,
+  score: 30042,
   level: 18,
   lives: 0,
   superzapper: 2,
   census: 0, // deaths returned everything to budget before the final title
-  ticks: 3594, // re-recorded for the two-tick, fixed eight-slot fire cadence;
-  // the slower held-fire cadence reshapes the combat timeline while
-  // score/level/lives/census remain unchanged.
+  ticks: 3897, // re-recorded for three-tick fire + EXPLODING death holds;
+  // cadence and death timing reshape combat while level/lives/census remain.
 };
 
 function freshConfig(): GameConfig {
@@ -104,7 +103,7 @@ function runGolden(): RunResult {
         hseTicks++;
         break;
       default:
-        break; // GET_READY / WARP / GAME_OVER: no inputs
+        break; // EXPLODING / GET_READY / WARP / GAME_OVER: no inputs
     }
 
     const r = sim.tick(input);
@@ -155,9 +154,9 @@ function pilotCombat(s: Readonly<SimState>, input: InputSnapshot): void {
   } else if (target !== null && target !== pl) {
     input.move = shortestArcDir(pl, target, s.closed) * 0.4;
   }
-  // One deterministic Superzapper use per run, the first time the well
-  // holds 4+ threats — guarantees the superzap event in the golden stream.
-  input.zap = threats >= 4 && s.superzapper === 2;
+  // One deterministic Superzapper use per run on the first threat — this
+  // guarantees event coverage independent of player-fire cadence tuning.
+  input.zap = threats >= 1 && s.superzapper === 2;
 }
 
 describe('golden replay (§13)', () => {

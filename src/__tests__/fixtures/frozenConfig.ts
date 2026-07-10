@@ -1435,6 +1435,7 @@ export const FROZEN_CONFIG: GameConfig = {
       blaster: 0,
     },
     startingLives: 3,
+    playerExplosionDuration: 0.8,
     getReadyDuration: 1.5,
     gameOverBeat: 2,
     flipSeekBias: 0.5,

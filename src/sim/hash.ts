@@ -10,8 +10,9 @@
 //
 // Task 12.1 audit (2026-07-06, final SimState shape): every §12.2 field is
 // serialized — phase, level, score, lives, livesGranted, rimPos, warpDepth,
-// closed, geometryIndex, superzapper, spawnTimer, pulseClock, getReadyTimer,
-// beatTimer, playerFireCooldownTicks, maxLevelReached, selector(+accum/timer), hsSlot,
+// closed, geometryIndex, superzapper, spawnTimer, pulseClock, deathTimer,
+// deathFromWarp, getReadyTimer, beatTimer, playerFireCooldownTicks,
+// maxLevelReached, selector(+accum/timer), hsSlot,
 // hsInitials, all five budgets, rng.state(); per-Enemy kind/lane/depth/flip
 // (from>to@progress)/flipTimer/fireTimer/climbDir/rimTimer/rimDir/
 // jitterTimer/speedMul/descentTarget/pulseJoined; per-shot lane/depth on both
@@ -50,6 +51,8 @@ export function serializeState(s: SimState): string {
     s.playerFireCooldownTicks,
     s.spawnTimer,
     s.pulseClock,
+    s.deathTimer,
+    s.deathFromWarp ? 1 : 0,
     s.getReadyTimer,
     s.beatTimer,
     s.maxLevelReached,

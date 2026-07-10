@@ -66,6 +66,12 @@ describe('validateConfig (§13 tuning-constraint guards, anchor half)', () => {
     expect(() => validateConfig(c)).toThrow(/perTickClamp/);
   });
 
+  it('rejects a non-positive player explosion duration', () => {
+    const c = makeConfig();
+    c.tuning.playerExplosionDuration = 0;
+    expect(() => validateConfig(c)).toThrow(/playerExplosionDuration/);
+  });
+
   it('rejects flipInt < 2·flipAnimTime at any anchor', () => {
     const c = makeConfig();
     c.difficulty[c.difficulty.length - 1]!.flipInt =

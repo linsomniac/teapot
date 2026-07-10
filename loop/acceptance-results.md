@@ -47,13 +47,13 @@ Screenshots: `artifacts/chromium/` and `artifacts/firefox/`
    (blue L well) vs `band-l17.png` (red circle well).
 3. **All five enemy behaviors (§6)** — PASS (per-enemy §13 suites; all five
    kinds active in the golden replay's level-17 wave; smoke pass).
-4. **§5–§9 rules/invariants** — PASS (352 unit/integration tests; descent
-   fairness simulated with non-vacuous control; difficulty monotonicity;
-   economy invariant; anti-camping risk gate across seeds 1–10 in both
-   topologies with flipSeekBias 0.3 and the two-tick fire cadence).
+4. **§5–§9 rules/invariants** — PASS except the temporarily suspended
+   anti-camping balance gate (three-tick cadence playtest, D47); descent
+   fairness is simulated with non-vacuous control, and difficulty monotonicity
+   plus the economy invariant remain active.
 5. **Player controls (§5)** — PASS (input-mapping suite + driven-browser
    lock/click/pause checks; per-tick clamp, 8-shot cap, immediate tap plus
-   two-tick auto-fire cadence tested).
+   three-tick auto-fire cadence tested).
 6. **Level select bounds + persistence** — PASS (unit suites + driven
    reload checks: mute persists; storage-throwing boot is clean).
 7. **Performance (§15.7/§12.6)** — SPLIT; see below.

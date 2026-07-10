@@ -236,8 +236,13 @@ describe('quit-to-title (§10/D19)', () => {
     return { sim, s };
   }
 
-  it('quit forces GAME_OVER from PLAYING, GET_READY, and WARP', () => {
-    for (const phase of ['PLAYING', 'GET_READY', 'WARP'] as const) {
+  it('quit forces GAME_OVER from every pauseable phase', () => {
+    for (const phase of [
+      'PLAYING',
+      'EXPLODING',
+      'GET_READY',
+      'WARP',
+    ] as const) {
       const { sim, s } = inPlay();
       s.phase = phase;
       s.getReadyTimer = 1;
@@ -299,7 +304,7 @@ describe('the full §10 transition set — every edge, and no others', () => {
     s.enemies = [];
   };
 
-  it('exercises all 13 declared edges', () => {
+  it('exercises every declared edge', () => {
     // 1. TITLE → LEVEL_SELECT (confirm)
     const t1 = createSim(cfg, 1);
     t1.tick(makeInput({ confirm: true }));
@@ -311,59 +316,78 @@ describe('the full §10 transition set — every edge, and no others', () => {
     t1.tick(makeInput({ confirm: true }));
     t1.tick(makeInput({ confirm: true }));
     expect(t1.getState().phase).toBe('PLAYING');
-    // 4. PLAYING → GET_READY (death, lives remain)
+    // 4. PLAYING → EXPLODING (death, lives remain)
     const t4 = freshPlay();
     die(t4.s);
     t4.sim.tick(makeInput());
+    expect(t4.s.phase).toBe('EXPLODING');
+    // 5. EXPLODING → GET_READY
+    t4.s.deathTimer = 0.001;
+    t4.sim.tick(makeInput());
     expect(t4.s.phase).toBe('GET_READY');
-    // 5. GET_READY → PLAYING (timer elapses)
+    // 6. GET_READY → PLAYING (timer elapses)
     t4.s.getReadyTimer = 0.001;
     t4.sim.tick(makeInput());
     expect(t4.s.phase).toBe('PLAYING');
-    // 6. PLAYING → WARP (wave complete)
+    // 7. PLAYING → WARP (wave complete)
     emptyWave(t4.s);
     t4.sim.tick(makeInput());
     expect(t4.s.phase).toBe('WARP');
-    // 7a. WARP → PLAYING (descent complete)
+    // 8. WARP → PLAYING (descent complete)
     t4.s.warpDepth = 1;
     t4.sim.tick(makeInput());
     expect(t4.s.phase).toBe('PLAYING');
-    // 7b. WARP → PLAYING (spike death, lives remaining)
+    // 9. WARP → EXPLODING → PLAYING (spike death, lives remaining)
     const t7 = freshPlay();
     t7.s.phase = 'WARP';
     t7.s.spikes = [{ lane: 8, topDepth: 0.001 }];
     t7.sim.tick(makeInput());
+    expect(t7.s.phase).toBe('EXPLODING');
+    t7.s.deathTimer = 0.001;
+    t7.sim.tick(makeInput());
     expect(t7.s.phase).toBe('PLAYING');
     expect(t7.s.level).toBe(6);
-    // 8a. PLAYING → GAME_OVER (death, no lives left)
+    // 10. PLAYING → EXPLODING → GAME_OVER (death, no lives left)
     const t8 = freshPlay();
     t8.s.lives = 1;
     die(t8.s);
     t8.sim.tick(makeInput());
+    expect(t8.s.phase).toBe('EXPLODING');
+    t8.s.deathTimer = 0.001;
+    t8.sim.tick(makeInput());
     expect(t8.s.phase).toBe('GAME_OVER');
-    // 8b. PLAYING → GAME_OVER (quit)
+    // 11. PLAYING → GAME_OVER (quit)
     const t8b = freshPlay();
     t8b.sim.tick(makeInput({ quit: true }));
     expect(t8b.s.phase).toBe('GAME_OVER');
-    // 9. GET_READY → GAME_OVER (quit)
+    // 12. EXPLODING → GAME_OVER (quit)
+    const t9x = freshPlay();
+    t9x.s.phase = 'EXPLODING';
+    t9x.s.deathTimer = 1;
+    t9x.sim.tick(makeInput({ quit: true }));
+    expect(t9x.s.phase).toBe('GAME_OVER');
+    // 13. GET_READY → GAME_OVER (quit)
     const t9 = freshPlay();
     t9.s.phase = 'GET_READY';
     t9.s.getReadyTimer = 1;
     t9.sim.tick(makeInput({ quit: true }));
     expect(t9.s.phase).toBe('GAME_OVER');
-    // 10a. WARP → GAME_OVER (spike death, no lives left)
+    // 14. WARP → EXPLODING → GAME_OVER (spike death, no lives left)
     const t10 = freshPlay();
     t10.s.phase = 'WARP';
     t10.s.lives = 1;
     t10.s.spikes = [{ lane: 8, topDepth: 0.001 }];
     t10.sim.tick(makeInput());
+    expect(t10.s.phase).toBe('EXPLODING');
+    t10.s.deathTimer = 0.001;
+    t10.sim.tick(makeInput());
     expect(t10.s.phase).toBe('GAME_OVER');
-    // 10b. WARP → GAME_OVER (quit)
+    // 15. WARP → GAME_OVER (quit)
     const t10b = freshPlay();
     t10b.s.phase = 'WARP';
     t10b.sim.tick(makeInput({ quit: true }));
     expect(t10b.s.phase).toBe('GAME_OVER');
-    // 11. GAME_OVER → HIGH_SCORE_ENTRY (beat elapsed, qualifies)
+    // 16. GAME_OVER → HIGH_SCORE_ENTRY (beat elapsed, qualifies)
     const t11 = freshPlay();
     t11.s.phase = 'GAME_OVER';
     t11.s.beatTimer = 0.001;
@@ -371,7 +395,7 @@ describe('the full §10 transition set — every edge, and no others', () => {
     t11.s.highScores = [];
     t11.sim.tick(makeInput());
     expect(t11.s.phase).toBe('HIGH_SCORE_ENTRY');
-    // 12. GAME_OVER → TITLE (beat elapsed, does not qualify)
+    // 17. GAME_OVER → TITLE (beat elapsed, does not qualify)
     const t12 = freshPlay();
     t12.s.phase = 'GAME_OVER';
     t12.s.beatTimer = 0.001;
@@ -379,7 +403,7 @@ describe('the full §10 transition set — every edge, and no others', () => {
     t12.s.highScores = fullTable(1000);
     t12.sim.tick(makeInput());
     expect(t12.s.phase).toBe('TITLE');
-    // 13. HIGH_SCORE_ENTRY → TITLE (initials confirmed)
+    // 18. HIGH_SCORE_ENTRY → TITLE (initials confirmed)
     const t13 = freshPlay();
     t13.s.phase = 'HIGH_SCORE_ENTRY';
     t13.s.hsSlot = 2;
@@ -398,6 +422,12 @@ describe('the full §10 transition set — every edge, and no others', () => {
     p.s.budget.flipper = 5; // wave incomplete
     for (const input of noisy) p.sim.tick(input);
     expect(p.s.phase).toBe('PLAYING');
+    // EXPLODING: only its timer or quit exits; all gameplay input is ignored.
+    const x = freshPlay();
+    x.s.phase = 'EXPLODING';
+    x.s.deathTimer = 10;
+    for (const input of noisy) x.sim.tick(input);
+    expect(x.s.phase).toBe('EXPLODING');
     // GET_READY: only the timer or quit exit; fire/confirm/back do nothing.
     const g = freshPlay();
     g.s.phase = 'GET_READY';

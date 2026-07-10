@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Sim, SimState } from './sim';
 import { makeRng } from './rng';
 import { paramsForLevel } from './difficultyCurve';
 import { TICK_SEC } from './types';
@@ -7,7 +8,7 @@ import { makeLiveConfig } from '../__tests__/fixtures/liveConfig';
 import { makeInput } from '../__tests__/fixtures/input';
 import { playingSim } from '../__tests__/fixtures/playing';
 
-// Task 5.3 — GET_READY + death/respawn (§5/§10). §13 death/respawn area.
+// Task 5.3 — EXPLODING + GET_READY + death/respawn (§5/§10).
 
 const cfg = makeLiveConfig();
 const lp5 = paramsForLevel(5, cfg.difficulty);
@@ -20,7 +21,16 @@ function lethalShot(s: {
   s.enemyShots.push({ lane: 8, depth: 0.005, prevDepth: 0.02 });
 }
 
-describe('death → GET_READY (§5/§10)', () => {
+function finishExplosion(sim: Sim, s: SimState): number {
+  let ticks = 0;
+  while (s.phase === 'EXPLODING' && ticks < 100) {
+    sim.tick(makeInput());
+    ticks++;
+  }
+  return ticks;
+}
+
+describe('death → EXPLODING → GET_READY (§5/§10)', () => {
   it('decrements a life, returns on-well enemies to budget by type, clears shots', () => {
     const { sim, s } = playingSim(cfg, 5);
     s.budget = { flipper: 2, tanker: 1, spiker: 0, fuseball: 0, pulsar: 0 };
@@ -55,7 +65,7 @@ describe('death → GET_READY (§5/§10)', () => {
     lethalShot(s);
     const livesBefore = s.lives;
     sim.tick(makeInput());
-    expect(s.phase).toBe('GET_READY');
+    expect(s.phase).toBe('EXPLODING');
     expect(s.lives).toBe(livesBefore - 1);
     expect(s.enemies).toEqual([]);
     expect(s.budget).toEqual({
@@ -73,6 +83,9 @@ describe('death → GET_READY (§5/§10)', () => {
     expect(s.score).toBe(500);
     expect(s.superzapper).toBe(1);
     expect(s.rimPos).toBeCloseTo(8.3, 12);
+    expect(s.deathTimer).toBe(cfg.tuning.playerExplosionDuration);
+    finishExplosion(sim, s);
+    expect(s.phase).toBe('GET_READY');
     expect(s.getReadyTimer).toBe(cfg.tuning.getReadyDuration);
   });
 
@@ -101,13 +114,34 @@ describe('death → GET_READY (§5/§10)', () => {
     expect(s.budget.flipper).toBe(2); // above the authored 0 — intended
   });
 
-  it('last-life death goes to GAME_OVER instead', () => {
+  it('last-life death finishes the explosion before GAME_OVER', () => {
     const { sim, s } = playingSim(cfg, 5);
     s.lives = 1;
     lethalShot(s);
     sim.tick(makeInput());
-    expect(s.phase).toBe('GAME_OVER');
+    expect(s.phase).toBe('EXPLODING');
     expect(s.lives).toBe(0);
+    finishExplosion(sim, s);
+    expect(s.phase).toBe('GAME_OVER');
+  });
+
+  it('holds the empty well for playerExplosionDuration and ignores input', () => {
+    const { sim, s } = playingSim(cfg, 5);
+    lethalShot(s);
+    sim.tick(makeInput());
+    const before = s.rimPos;
+    const expectedTicks = Math.round(cfg.tuning.playerExplosionDuration * 60);
+    let ticks = 0;
+    while (s.phase === 'EXPLODING' && ticks < expectedTicks + 5) {
+      const { events } = sim.tick(
+        makeInput({ move: 0.4, fire: true, zap: true }),
+      );
+      expect(events).not.toContainEqual({ type: 'playerShot' });
+      ticks++;
+    }
+    expect(s.phase).toBe('GET_READY');
+    expect(s.rimPos).toBe(before);
+    expect(Math.abs(ticks - expectedTicks)).toBeLessThanOrEqual(1);
   });
 });
 
@@ -116,6 +150,7 @@ describe('GET_READY behavior (§10)', () => {
     const { sim, s } = playingSim(cfg, 5);
     lethalShot(s);
     sim.tick(makeInput());
+    finishExplosion(sim, s);
     expect(s.phase).toBe('GET_READY');
     return { sim, s };
   }
@@ -180,8 +215,10 @@ describe('GET_READY behavior (§10)', () => {
     const { events } = sim.tick(makeInput());
     expect(events.some((ev) => ev.type === 'enemyKilled')).toBe(true);
     expect(events.some((ev) => ev.type === 'playerDied')).toBe(true);
-    expect(s.phase).toBe('GET_READY'); // death still resolved — life lost
+    expect(s.phase).toBe('EXPLODING'); // death still resolves — life lost
     expect(s.lives).toBe(livesBefore - 1);
+    finishExplosion(sim, s);
+    expect(s.phase).toBe('GET_READY');
     // The empty wave completes on the first PLAYING tick after GET_READY.
     let guard = 0;
     while (s.phase === 'GET_READY' && guard++ < 200) sim.tick(makeInput());

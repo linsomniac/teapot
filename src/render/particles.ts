@@ -69,9 +69,13 @@ export function createParticleSystem(
       for (let i = 0; i < count; i++) spawnOne(x, y, color, speed);
     },
     playerDeathBurst(x, y): void {
-      // Bigger, distinct burst (§11.1).
-      for (let i = 0; i < 60; i++) {
-        spawnOne(x, y, i % 3 === 0 ? '#ffffff' : '#ffd23b', 260);
+      // Layered, distinct burst (§11.1): a dense hot core plus longer red/
+      // yellow fragments. The renderer adds expanding rings over this cloud.
+      for (let i = 0; i < 96; i++) {
+        const color =
+          i % 5 === 0 ? '#ffffff' : i % 3 === 0 ? '#ff5a36' : '#ffd23b';
+        const speed = i < 24 ? 150 : i < 72 ? 290 : 430;
+        spawnOne(x, y, color, speed);
       }
     },
     update(dtSec): void {

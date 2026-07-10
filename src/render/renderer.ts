@@ -57,7 +57,13 @@ export interface Renderer {
   particles(): ParticleSystem;
 }
 
-const IN_WELL_PHASES = new Set(['PLAYING', 'GET_READY', 'WARP', 'GAME_OVER']);
+const IN_WELL_PHASES = new Set([
+  'PLAYING',
+  'EXPLODING',
+  'GET_READY',
+  'WARP',
+  'GAME_OVER',
+]);
 const SUPERZAP_FX_TIME = 0.45; // seconds
 
 export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
@@ -98,10 +104,10 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
     view.ctx.drawImage(wellCache, 0, 0, pvp.width, pvp.height);
   }
   const dc: EnemyDrawContext = { frame: 0, pulsarFlash: 0 };
-  // Last drawn player position (canvas coords): resolveDeath may have
-  // already advanced levels by the time playerDied is consumed (WARP spike
-  // deaths), so bursts anchor to where the player was last DRAWN.
+  // Last drawn player position (canvas coords): EXPLODING hides the claw before
+  // playerDied is consumed, so bursts anchor to where it was last DRAWN.
   const lastPlayerPos = { x: 0, y: 0, valid: false };
+  const deathFx = { x: 0, y: 0, remaining: 0 };
   let superzapFx = 0; // seconds remaining
   let cachedLevel = -1;
   let cachedParams: LevelParams | null = null;
@@ -142,6 +148,8 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
           case 'playerDied': {
             if (lastPlayerPos.valid) {
               particles.playerDeathBurst(lastPlayerPos.x, lastPlayerPos.y);
+              deathFx.x = lastPlayerPos.x;
+              deathFx.y = lastPlayerPos.y;
             } else {
               const rim = project(
                 playerLane(s.rimPos, s.closed),
@@ -153,7 +161,10 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
                 view.playfield.x + rim.x,
                 view.playfield.y + rim.y,
               );
+              deathFx.x = view.playfield.x + rim.x;
+              deathFx.y = view.playfield.y + rim.y;
             }
+            deathFx.remaining = cfg.tuning.playerExplosionDuration;
             break;
           }
           case 'superzap':
@@ -169,6 +180,12 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
       const { ctx, playfield } = view;
       dc.frame++;
       particles.update(dtSec);
+      if (s.phase === 'EXPLODING') {
+        // Follow sim time so pausing freezes the shock rings with the phase.
+        deathFx.remaining = Math.max(0, s.deathTimer);
+      } else if (deathFx.remaining > 0) {
+        deathFx.remaining = Math.max(0, deathFx.remaining - dtSec);
+      }
       if (superzapFx > 0) superzapFx = Math.max(0, superzapFx - dtSec);
 
       const inWell = IN_WELL_PHASES.has(s.phase);
@@ -305,6 +322,9 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
           drawHud(ctx, playfield, s, colors, opts.lowGlow);
           drawGetReady(ctx, playfield, opts.lowGlow);
           break;
+        case 'EXPLODING':
+          drawHud(ctx, playfield, s, colors, opts.lowGlow);
+          break;
         case 'GAME_OVER':
           drawHud(ctx, playfield, s, colors, opts.lowGlow);
           drawGameOver(ctx, playfield, opts.lowGlow);
@@ -323,6 +343,37 @@ export function createRenderer(cfg: GameConfig, opts: RenderOptions): Renderer {
 
       // Particles live in canvas coordinates (they outlive well transforms).
       particles.draw(ctx, opts.lowGlow);
+
+      // A brief hot flash and three expanding shock rings make player death
+      // read as an animation rather than an instantaneous sprite removal.
+      if (deathFx.remaining > 0) {
+        const duration = cfg.tuning.playerExplosionDuration;
+        const t = 1 - deathFx.remaining / duration;
+        const fade = 1 - t;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (t < 0.22) {
+          ctx.globalAlpha = (1 - t / 0.22) * 0.75;
+          ctx.fillStyle = '#fff4c2';
+          ctx.beginPath();
+          ctx.arc(deathFx.x, deathFx.y, 8 + t * 95, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = fade;
+        for (let i = 0; i < 3; i++) {
+          const local = Math.max(0, t - i * 0.1);
+          const radius = 12 + local * (90 + i * 28);
+          ctx.beginPath();
+          ctx.arc(deathFx.x, deathFx.y, radius, 0, Math.PI * 2);
+          strokeWithGlow(
+            ctx,
+            i === 0 ? '#ffffff' : i === 1 ? '#ffd23b' : '#ff5a36',
+            Math.max(1, 4 - i - t * 2),
+            opts.lowGlow,
+          );
+        }
+        ctx.restore();
+      }
 
       // Superzapper full-screen effect: screen-wide flash + expanding line
       // burst (§11.1).

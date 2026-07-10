@@ -645,7 +645,7 @@ export function advanceShots(shots: Shot[], speed: number, dir: 1 | -1): void; /
 - [ ] **Test (§13 player-firing area):** movement applies `input.move` to `rimPos`
   (keyboard delta), clamps on open wells; fire spawns a shot at `playerLane`,
   depth = 0 in PLAY / warpDepth in WARP; fire is immediate on press, then held
-  fire spawns at most one shot every second tick by scanning a fixed eight-slot
+  fire spawns at most one shot every third tick by scanning a fixed eight-slot
   pool 7→0; release resets the cadence; full pools pause until impact or
   range expiry frees a slot, with no ammo regeneration clock; a shot reaching
   depth 1 despawns; shots are cleared on every state transition (§6).
@@ -894,7 +894,7 @@ the next level.)
 ### Task 5.3: GET_READY + death/respawn
 
 **Files:** `src/sim/state.ts` (death/GET_READY logic), tests.
-- [ ] **Test (§13 death/respawn area):** a lethal event in PLAYING → GET_READY (if
+- [ ] **Test (§13 death/respawn area):** a lethal event in PLAYING → EXPLODING → GET_READY (if
   lives remain) after decrement; on-well enemies returned to budget by type (split
   Flippers → Flipper budget, may exceed authored); shots cleared; spikes/score/rim
   persist; GET_READY lasts `getReadyDuration`, movement applied, fire/zap ignored,
@@ -937,7 +937,7 @@ the next level.)
 ### Task 6.2: Quit-to-title + full transition set
 
 **Files:** `src/sim/state.ts`, `src/sim/state.test.ts`.
-- [ ] **Test:** `input.quit` forces GAME_OVER from PLAYING, GET_READY, or WARP;
+- [ ] **Test:** `input.quit` forces GAME_OVER from PLAYING, EXPLODING, GET_READY, or WARP;
   final state-machine test asserts **every** §10 transition (incl. GET_READY↔,
   both WARP exits, all quit edges) and **no others**. Commit.
 
@@ -1048,15 +1048,15 @@ Keep hot paths allocation-free (reuse buffers; I3).
 
 - [ ] **Escape is phase-gated (one owner):** the input layer routes Escape as
   `snapshot.back` while the sim is in a menu state (TITLE/LEVEL_SELECT/HIGH_SCORE_
-  ENTRY) and as the app-layer pause toggle while in PLAYING/GET_READY/WARP — it is
+  ENTRY) and as the app-layer pause toggle while in PLAYING/EXPLODING/GET_READY/WARP — it is
   never both on one keypress. M (mute), P (pause), F3 (overlay) are app-layer keys
   the sim never sees. **Q** is app-layer at the key level (only the pause overlay
   reads it) but the app translates it into the `snapshot.quit` sim input (§12.3),
   so the sim does receive it as a UI intent — unlike M/P/F3.
-- [ ] Keyboard; pointer-lock request on canvas click in PLAYING/GET_READY/WARP
+- [ ] Keyboard; pointer-lock request on canvas click in PLAYING/EXPLODING/GET_READY/WARP
   (`unadjustedMovement:true`, retry without on not-supported, defensive non-Promise
   return); **exit any held pointer lock when the sim phase leaves
-  PLAYING/GET_READY/WARP** (observe phase transitions and call
+  PLAYING/EXPLODING/GET_READY/WARP** (observe phase transitions and call
   `document.exitPointerLock()` — §5); consume lock/unpause/title clicks (not fire);
   clear the mouse accumulator on pause/resume; suppress context menu for right-click
   zap. (Behavior verified via the §13 manual browser-integration checklist.) Commit.
@@ -1079,7 +1079,7 @@ Keep hot paths allocation-free (reuse buffers; I3).
 - [ ] rAF loop: read elapsed, `advance()` the stepper, build a snapshot per tick,
   `sim.tick()`, render with alpha, dispatch events to audio/particles (§12.3).
 - [ ] App-layer pause overlay (P/Escape, auto-pause on blur/visibility/pointer-lock
-  exit only in PLAYING/GET_READY/WARP; ignored elsewhere; no sim time leak); resume
+  exit only in PLAYING/EXPLODING/GET_READY/WARP; ignored elsewhere; no sim time leak); resume
   (P or click); Quit-to-title (Q → `input.quit`) (§10, D19). Seed from
   `Date.now()`⊕`crypto` at game start (§12.3). **At startup, initialize the audio
   mute state from the persisted `settings.muted`** (via the storage adapter, Task
@@ -1201,11 +1201,11 @@ The rules themselves were activated in Task 0.1 and have guarded sim code all al
 Run per supported browser (Chrome, Firefox — §12.5/C1); record pass/fail +
 notes in `loop/acceptance-results.md`. These are behaviors unit tests cannot reach
 (automate via a driven browser where possible; judgment items pend per C3):
-- [ ] Pointer lock engages on canvas click during PLAYING/GET_READY/WARP; the
+- [ ] Pointer lock engages on canvas click during PLAYING/EXPLODING/GET_READY/WARP; the
   engaging click does not fire a shot.
 - [ ] Escape while locked auto-pauses (driven by `pointerlockchange`, not the
   keydown); blur/tab-hide auto-pauses; lock loss for any reason auto-pauses.
-- [ ] Auto-pause fires only in PLAYING/GET_READY/WARP and is ignored on menu /
+- [ ] Auto-pause fires only in PLAYING/EXPLODING/GET_READY/WARP and is ignored on menu /
   game-over screens.
 - [ ] The pointer lock is retained across PLAYING↔WARP↔GET_READY (mouse still moves
   and fires during the warp descent), and is released **only** when the game leaves

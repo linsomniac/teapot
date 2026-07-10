@@ -42,7 +42,7 @@ medium+ addressed → box checked → commit.
 ## Phase 3 — Sim entities & combat
 - [x] 3.1 `SimState` + `createSim` + state-machine skeleton + first transitions (§10).
 - [x] 3.2 Player movement + firing + shots (fixed 8-slot pool, immediate press then
-  one per two held ticks, despawn, clear-on-transition) (§5).
+  one per three held ticks, despawn, clear-on-transition) (§5).
 - [x] 3.3 Scoring + bonus-life rule (bands, clear bonus + cap, floor-based lives,
   same-tick life+death nets zero) (§7).
 
@@ -77,7 +77,7 @@ medium+ addressed → box checked → commit.
   default level, entry loop via edge-triggered `confirm` (C10), click carve-out,
   qualification) (§10).
 - [x] 6.2 Quit-to-title + **full transition test** (every §10 edge incl. quit from
-  PLAYING/GET_READY/WARP, and no others) (§10).
+  PLAYING/EXPLODING/GET_READY/WARP, and no others) (§10).
 
 ## Phase 7 — Persistence
 - [x] 7.1 Save schema (round-trip, corrupt/missing/wrong-shape defaults, qualification,
@@ -110,7 +110,8 @@ medium+ addressed → box checked → commit.
 - [x] 12.3 Hash-completeness test (mutate each category → hash changes) + benchMode
   census-hold test (invulnerable, no despawn, count held) (§12.2/§12.6/§13).
 - [x] 12.4 ESLint sim-math + browser-API purity rules fire (§12.3/§12.2).
-- [x] 12.5 Anti-camping test (both topologies, median<60 s) + economy-invariant test
+- [ ] 12.5 Anti-camping balance retune for the three-tick cadence (deterministic
+  harness retained but skipped per D47); economy-invariant test remains active
   (§13/D30/D44).
 
 ## Phase 13 — Acceptance

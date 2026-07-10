@@ -156,7 +156,7 @@ describe('Superzapper (§5)', () => {
     expect(s.superzapper).toBe(1);
     s.enemyShots = [{ lane: 8, depth: 0.005, prevDepth: 0.02 }];
     sim.tick(makeInput());
-    expect(s.phase).toBe('GET_READY');
+    expect(s.phase).toBe('EXPLODING');
     expect(s.superzapper).toBe(1); // not restored
   });
 });

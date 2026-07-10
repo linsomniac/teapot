@@ -40,6 +40,7 @@ export const TUNING: Tuning = Object.freeze({
     blaster: 0,
   }),
   startingLives: 3,
+  playerExplosionDuration: 0.8, // s; player hidden while death FX finishes
   getReadyDuration: 1.5, // s
   gameOverBeat: 2.0, // s
   flipSeekBias: 0.3, // fraction of mid-well flips that seek the player.
