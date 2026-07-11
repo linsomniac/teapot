@@ -52,11 +52,20 @@ export function drawTitle(
   ctx.beginPath();
   line(ctx, pf, 'HIGH SCORES', 0.36, mid);
   const rows = s.highScores.slice(0, 10);
+  // Draw each value at its own fixed column. Centering a single combined
+  // string makes every field move whenever a later field gains a digit.
+  const cellAdvance = textWidth('AA', small) - textWidth('A', small);
+  const tableLeft =
+    pf.x + pf.width / 2 - textWidth('AAA  0000000  L000', small) / 2;
+  const scoreX = tableLeft + 5 * cellAdvance;
+  const levelX = tableLeft + 14 * cellAdvance;
   for (let i = 0; i < rows.length; i++) {
     const e = rows[i]!;
     const y = 0.42 + i * 0.033;
-    const text = `${e.initials.padEnd(3, ' ')}  ${String(e.score).padStart(7, ' ')}  L${e.level}`;
-    line(ctx, pf, text, y, small);
+    const rowY = pf.y + pf.height * y;
+    pathText(ctx, e.initials.padEnd(3, ' '), tableLeft, rowY, small);
+    pathText(ctx, String(e.score), scoreX, rowY, small);
+    pathText(ctx, `L${e.level}`, levelX, rowY, small);
   }
   if (rows.length === 0) {
     line(ctx, pf, 'NO SCORES YET', 0.44, small);
